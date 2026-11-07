@@ -14,6 +14,8 @@ import {
   sha256Hex,
   parseContractIdFromCreateResult,
   executeAnchorFlow,
+  AUTH_ANCHOR_DOMAIN,
+  deriveAuthorizedAnchorId,
 } from "../../packages/stellar-soroban/index.mjs";
 import { Keypair, Networks, TransactionBuilder, StrKey, xdr } from "@stellar/stellar-sdk";
 
@@ -203,4 +205,140 @@ test("executeAnchorFlow fail-closed defaults preserved (mainnet WITHOUT ownerAut
     wait: async () => ({ state: "FAILED" }),
   });
   assert.equal(failed.state, "REJECTED");
+});
+
+// ---- AUTHORIZED anchor lane (additive; the identity-enforced surface) ----
+
+const WORK_HASH = "0xc0dbfb45b6c8e13b3738822360ea737adfc045d4acb808bdaeac563c8af31052";
+const VECTOR_ID = "0xb5f9655d4c0b4292ed0be7cd87b68e71297c1bf94667a9657ce3b6f6cbec6f30";
+const OWNER_STRKEY = "GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U";
+
+/** Decode a built invoke envelope into {functionName, args} (SDK XDR objects). */
+function decodeInvoke(xdrBase64, passphrase) {
+  const tx = TransactionBuilder.fromXDR(xdrBase64, passphrase);
+  const op = tx.operations[0];
+  assert.equal(op.type, "invokeHostFunction", "wire op must be the invoke host-function op");
+  const hfObj = op.func.toXdrObject();
+  assert.equal(hfObj.type, 0, "host fn must be invoke-contract");
+  const ic = hfObj.invokeContract;
+  const names = { 13: "bytes", 18: "address" };
+  const args = ic.args.map((a) => ({
+    kind: names[a.type] || `type${a.type}`,
+    bytes: a.bytes ? Buffer.from(a.bytes) : null,
+    addressKind: a.address ? a.address.type : null, // 0 = account, 1 = contract
+    accountId: a.address && a.address.accountId ? StrKey.encodeEd25519PublicKey(Buffer.from(Uint8Array.from(Object.values(a.address.accountId.ed25519)))) : null,
+  }));
+  return { functionName: String(ic.functionName), args, tx };
+}
+
+const buildAuthInvoke = (functionName, extra = {}) => buildInvokeTx({
+  contractId: EXEC_PAIR.contractId,
+  functionName,
+  source: Keypair.random().publicKey(),
+  sequence: "77",
+  commitmentId: VECTOR_ID,
+  commitmentHash: WORK_HASH,
+  owner: OWNER_STRKEY,
+  network: "testnet",
+  fee: "100",
+  ...extra,
+});
+
+test("auth lane derivation matches the cross-language known-answer vector", () => {
+  assert.equal(AUTH_ANCHOR_DOMAIN, "coreguard-anchor-auth/1");
+  const d0x = deriveAuthorizedAnchorId({ owner: OWNER_STRKEY, hash: WORK_HASH });
+  assert.equal(d0x.state, "DERIVED");
+  assert.equal(d0x.error, null);
+  assert.equal(d0x.id, VECTOR_ID);
+  // "0x"-prefix and bare-hex inputs derive the SAME canonical id.
+  const dBare = deriveAuthorizedAnchorId({ owner: OWNER_STRKEY, hash: WORK_HASH.slice(2) });
+  assert.equal(dBare.id, VECTOR_ID);
+});
+
+test("auth lane derivation is fail-closed on malformed inputs", () => {
+  assert.equal(deriveAuthorizedAnchorId({}).state, "GATED");
+  assert.equal(deriveAuthorizedAnchorId({ owner: OWNER_STRKEY }).state, "GATED");
+  assert.equal(deriveAuthorizedAnchorId({ owner: OWNER_STRKEY, hash: "0x1234" }).state, "GATED");
+  assert.equal(deriveAuthorizedAnchorId({ owner: "GDJ3", hash: WORK_HASH }).state, "GATED");
+  // A 32-byte hex string that is not a valid strkey shape still gates.
+  assert.equal(deriveAuthorizedAnchorId({ owner: "Z" + "A".repeat(55), hash: WORK_HASH }).state, "GATED");
+});
+
+test("the authorized id binds the OWNER and the HASH (front-run impossibility shape)", () => {
+  // A stranger owner (their own valid ed25519 key) derives a DIFFERENT id
+  // from the same content: the attacker cannot pre-register the owner's id,
+  // they can only create their own. A different hash for the same owner is
+  // likewise a different id: "right id, wrong value" has no derivation path.
+  const attackerDerivation = deriveAuthorizedAnchorId({
+    owner: Keypair.random().publicKey(),
+    hash: WORK_HASH,
+  });
+  const ownerDerivation = deriveAuthorizedAnchorId({ owner: OWNER_STRKEY, hash: WORK_HASH });
+  assert.notEqual(attackerDerivation.id, ownerDerivation.id);
+  const otherHash = "0xc1" + WORK_HASH.slice(4);
+  assert.notEqual(
+    deriveAuthorizedAnchorId({ owner: OWNER_STRKEY, hash: otherHash }).id,
+    ownerDerivation.id,
+  );
+});
+
+test("commit_authorized envelope carries (owner, hash) — NO id argument exists", () => {
+  const tx = buildAuthInvoke("commit_authorized", { commitmentId: undefined });
+  assert.equal(tx.state, "BUILD_OK");
+  const d = decodeInvoke(tx.tx.toXDR("base64"), Networks.TESTNET);
+  assert.equal(d.functionName, "commit_authorized");
+  assert.equal(d.args.length, 2, "two args only: owner + hash (no id to lie about)");
+  assert.equal(d.args[0].kind, "address");
+  assert.equal(d.args[0].addressKind, 0, "owner must be an ACCOUNT address");
+  assert.equal(d.args[0].accountId, OWNER_STRKEY, "owner identity is the wallet strkey");
+  assert.equal(d.args[1].kind, "bytes");
+  assert.equal(d.args[1].bytes.toString("hex"), WORK_HASH.slice(2));
+});
+
+test("read_authorized envelope carries the derived id only", () => {
+  const tx = buildAuthInvoke("read_authorized", { owner: undefined });
+  assert.equal(tx.state, "BUILD_OK");
+  const d = decodeInvoke(tx.tx.toXDR("base64"), Networks.TESTNET);
+  assert.equal(d.functionName, "read_authorized");
+  assert.equal(d.args.length, 1);
+  assert.equal(d.args[0].kind, "bytes");
+  assert.equal(d.args[0].bytes.toString("hex"), VECTOR_ID.slice(2), "the id read back is the derived one");
+});
+
+test("assert_anchored_authorized envelope carries (id, owner, hash)", () => {
+  const tx = buildAuthInvoke("assert_anchored_authorized");
+  assert.equal(tx.state, "BUILD_OK");
+  const d = decodeInvoke(tx.tx.toXDR("base64"), Networks.TESTNET);
+  assert.equal(d.functionName, "assert_anchored_authorized");
+  assert.equal(d.args.length, 3);
+  assert.equal(d.args[0].kind, "bytes");
+  assert.equal(d.args[0].bytes.toString("hex"), VECTOR_ID.slice(2));
+  assert.equal(d.args[1].kind, "address");
+  assert.equal(d.args[1].addressKind, 0);
+  assert.equal(d.args[1].accountId, OWNER_STRKEY);
+  assert.equal(d.args[2].kind, "bytes");
+  assert.equal(d.args[2].bytes.toString("hex"), WORK_HASH.slice(2));
+});
+
+test("authorized lane builders keep the mainnet fail-closed posture", () => {
+  // No ownerAuthorization flag -> every authorized-lane builder refuses mainnet.
+  for (const fn of ["commit_authorized", "read_authorized", "assert_anchored_authorized"]) {
+    const refused = buildAuthInvoke(fn, { network: "mainnet", ownerAuthorization: false });
+    assert.equal(refused.state, "NOT_AUTHORIZED", `mainnet must refuse ${fn} without the owner flag`);
+  }
+  // With the owner's explicit flag the envelope still builds (the DEPLOY
+  // decision for the source's new lane stays a separate owner act).
+  const built = buildAuthInvoke("commit_authorized", { network: "mainnet", ownerAuthorization: true });
+  assert.equal(built.state, "BUILD_OK");
+});
+
+test("authorized lane builders gate malformed owners and unknown function names", () => {
+  // Missing owner argument -> GATED (fail-closed, never a silent default).
+  assert.equal(buildAuthInvoke("commit_authorized", { owner: undefined }).state, "GATED");
+  assert.equal(buildAuthInvoke("assert_anchored_authorized", { owner: undefined }).state, "GATED");
+  // A 56-char G-shape with an invalid CRC throws inside the SDK -> GATED.
+  assert.equal(buildAuthInvoke("commit_authorized", { owner: "G" + "A".repeat(55) }).state, "GATED");
+  // Misspelled function names never slip through as permissionless calls.
+  assert.equal(buildAuthInvoke("commitz").state, "GATED");
+  assert.equal(buildAuthInvoke("commit_authorizedX").state, "GATED");
 });

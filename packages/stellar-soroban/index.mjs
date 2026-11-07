@@ -73,6 +73,37 @@ export const SOROBAN_STATES = Object.freeze([
 
 export const CG_COMMITMENT_ANCHOR_VERSION = "CG-COMMITMENT-ANCHOR/1";
 
+/**
+ * AUTHORIZED ANCHOR LANE (additive to the deployed/1 ABI family).
+ *
+ * The reviewer-visible gap in the permissionless lane is real and stated
+ * honestly: `commit(id, hash)` binds ANY caller's (id, hash) pair, so a
+ * party that learns a target id before its owner anchors it can
+ * pre-register a WRONG hash there (first-write wins). It can never corrupt
+ * an already-anchored id (the mismatch path is fail-closed), but the race
+ * exists. The authorized lane closes it at two independent walls:
+ *   1. IDENTITY IS DERIVED: the on-chain id is computed IN-CONTRACT as
+ *      `sha256( utf8(AUTH_DOMAIN) ++ utf8(strkey(owner)) ++ hash )` — a
+ *      wrong hash derives a DIFFERENT id, so "occupy the right id with a
+ *      wrong value" reduces to breaking SHA-256 preimage resistance, not a
+ *      race.
+ *   2. AUTHORIZATION IS HOST-ENFORCED: the write requires the owner's OWN
+ *      signature (`owner.require_auth()` in the Rust source); an attacker
+ *      cannot front-run the derived id at all, and calling with their own
+ *      address derives a different id (the id binds the owner too).
+ * The Rust source lives at soroban/commitment-anchor/src/lib.rs. This file
+ * is the JS mirror: the same derivation (below) plus the envelope builders
+ * for the new functions, all executed/tested on every push (this machine's
+ * Application Control policy blocks running freshly-built cargo binaries,
+ * so the JS layer + CI are where the executable truth lives today — the
+ * warp-wide cross-language known-answer vector on BOTH sides keeps the
+ * two derivations byte-identical or failing loudly).
+ * The MAINNET-DEPLOYED contract (version() == "CG-COMMITMENT-ANCHOR/1")
+ * does NOT expose these functions yet; invoking them against a deployed/1
+ * instance FAILS on-chain by design (fail-closed: no silent wrong lane).
+ */
+export const AUTH_ANCHOR_DOMAIN = "coreguard-anchor-auth/1";
+
 /** Committed WASM artifact path (relative to this module). */
 export const WASM_ARTIFACT = "../../soroban/commitment-anchor/artifacts/cg_commitment_anchor.wasm";
 
@@ -83,6 +114,39 @@ function isNonEmptyString(v) {
 /** sha256 hex of bytes — the wasmHash Stellar's contract creation needs. */
 export function sha256Hex(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * The authorized lane's in-contract derivation, mirrored byte-for-byte:
+ * `sha256( utf8(AUTH_ANCHOR_DOMAIN) ++ utf8(strkey(owner)) ++ hash32 )`
+ * -> `0x…` (32-byte uppercaseless hex, the CGEP/1 domainHash output shape).
+ *
+ * The `0x` prefix and input validation are fail-closed (non-strkey owners
+ * and non-32-byte hashes return GATED, never a partial digest). This is the
+ * EXACT preimage the Rust `derive_authorized_id` computes; the
+ * cross-language known-answer vector is pinned in both test batteries:
+ * preimage = utf8("coreguard-anchor-auth/1") ++ utf8("GDJ3CRNLNDZ4AVWGPUG7D
+ * BC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U") ++ bytes(0xc0dbfb45…1052)
+ * (23 ++ 56 ++ 32 = 111 bytes) -> sha256 =
+ * 0xb5f9655d4c0b4292ed0be7cd87b68e71297c1bf94667a9657ce3b6f6cbec6f30.
+ */
+export function deriveAuthorizedAnchorId({ owner, hash } = {}) {
+  const ownerStr = typeof owner === "string" ? owner : "";
+  const isStrkeyShape = /^([GC])[A-Z2-7]{55}$/.test(ownerStr);
+  const hex = typeof hash === "string" ? hash.replace(/^0x/, "") : "";
+  const isHash32 = /^[0-9a-fA-F]{64}$/.test(hex);
+  if (!isStrkeyShape) {
+    return { state: "GATED", id: null, error: "owner must be a Stellar G…/C… strkey (56 chars)" };
+  }
+  if (!isHash32) {
+    return { state: "GATED", id: null, error: "hash must be 32 bytes of hex" };
+  }
+  const digest = createHash("sha256")
+    .update(Buffer.from(AUTH_ANCHOR_DOMAIN, "utf8"))
+    .update(Buffer.from(ownerStr, "utf8"))
+    .update(Buffer.from(hex, "hex"))
+    .digest();
+  return { state: "DERIVED", id: "0x" + digest.toString("hex"), error: null };
 }
 
 /** Read the committed WASM artifact + its sha256 (for offline verifiers). */
@@ -222,9 +286,24 @@ export function buildCreateContractTx({
 }
 
 /**
- * Build an INVOKE transaction OFFLINE. fn "commit" with (id, hash) bytes, or
- * "read" with the id only. Simulation of a read invocation is the demo's
- * verify step (a read never needs a submission).
+ * Build an INVOKE transaction OFFLINE.
+ *
+ * Permissionless lane (deployed/1 contract):
+ *   - "commit" with (id, hash) bytes.
+ *   - "read" with the id only. Simulation of a read invocation is the demo's
+ *     verify step (a read never needs a submission).
+ * AUTHORIZED lane (additive to the ABI family; invoking these names against
+ * the deployed/1 instance FAILS on-chain by design — fail-closed, never a
+ * silent wrong lane):
+ *   - "commit_authorized(owner, hash)": the id is derived IN-CONTRACT from
+ *     the owner + hash (AUTH_ANCHOR_DOMAIN prefix); there is NO id argument
+ *     to lie about, and the host enforces the owner signature.
+ *   - "read_authorized(id)": transparent read-back (returns owner + hash).
+ *   - "assert_anchored_authorized(id, owner, hash)": strict public verify —
+ *     fail-closed unless entry, id-derivation, hash and owner ALL match.
+ * Mainnet gating is unchanged: every builder refuses mainnet without the
+ * caller's explicit user authorization flag (ownerAuthorization === true);
+ * a DEPLOY decision for the source's new lane remains a separate owner act.
  */
 export function buildInvokeTx({
   contractId,
@@ -233,6 +312,7 @@ export function buildInvokeTx({
   sequence,
   commitmentId,
   commitmentHash,
+  owner,
   network = "testnet",
   fee = "50000",
   ownerAuthorization = false,
@@ -246,21 +326,43 @@ export function buildInvokeTx({
   if (!isNonEmptyString(source) || !/^\d+$/.test(String(sequence))) {
     return { state: "GATED", error: "sourcePublicKey + sequence required", tx: null };
   }
-  if (functionName !== "commit" && functionName !== "read") {
-    return { state: "GATED", error: "functionName must be commit|read", tx: null };
+  const AUTHORIZED = functionName === "commit_authorized" || functionName === "read_authorized" || functionName === "assert_anchored_authorized";
+  if (!AUTHORIZED && functionName !== "commit" && functionName !== "read") {
+    return { state: "GATED", error: "functionName must be commit|read|commit_authorized|read_authorized|assert_anchored_authorized", tx: null };
   }
-  const idBytes = toBytes32(commitmentId);
-  if (!idBytes) return { state: "GATED", error: "commitmentId must be 32 bytes", tx: null };
-  const args = functionName === "commit"
-    ? (() => {
-        const h = toBytes32(commitmentHash);
-        if (!h) return null;
-        return [xdr.ScVal.scvBytes(idBytes), xdr.ScVal.scvBytes(h)];
-      })()
-    : [xdr.ScVal.scvBytes(idBytes)];
-  if (args === null) {
-    return { state: "GATED", error: "commitmentHash must be 32 bytes for commit", tx: null };
+  // commit_authorized takes NO caller id — the id is derived in-contract;
+  // every other surface needs exactly the 32-byte id.
+  let idBytes = null;
+  if (functionName !== "commit_authorized") {
+    idBytes = toBytes32(commitmentId);
+    if (!idBytes) return { state: "GATED", error: "commitmentId must be 32 bytes", tx: null };
   }
+  let args = null;
+  let gate = null;
+  if (functionName === "commit") {
+    const h = toBytes32(commitmentHash);
+    if (!h) gate = { state: "GATED", error: "commitmentHash must be 32 bytes for commit", tx: null };
+    else args = [xdr.ScVal.scvBytes(idBytes), xdr.ScVal.scvBytes(h)];
+  } else if (functionName === "read" || functionName === "read_authorized") {
+    args = [xdr.ScVal.scvBytes(idBytes)];
+  } else if (functionName === "commit_authorized") {
+    const h = toBytes32(commitmentHash);
+    if (!h) gate = { state: "GATED", error: "commitmentHash must be 32 bytes for commit_authorized", tx: null };
+    else {
+      const ownerScVal = ownerScValOrGated(owner);
+      if (!ownerScVal) gate = { state: "GATED", error: "owner must be a valid Stellar G…/C… address for commit_authorized", tx: null };
+      else args = [ownerScVal, xdr.ScVal.scvBytes(h)];
+    }
+  } else if (functionName === "assert_anchored_authorized") {
+    const h = toBytes32(commitmentHash);
+    if (!h) gate = { state: "GATED", error: "commitmentHash must be 32 bytes for assert_anchored_authorized", tx: null };
+    else {
+      const ownerScVal = ownerScValOrGated(owner);
+      if (!ownerScVal) gate = { state: "GATED", error: "owner must be a valid Stellar G…/C… address for assert_anchored_authorized", tx: null };
+      else args = [xdr.ScVal.scvBytes(idBytes), ownerScVal, xdr.ScVal.scvBytes(h)];
+    }
+  }
+  if (gate) return gate;
   const tx = new TransactionBuilder(new Account(source, String(sequence)), { fee, networkPassphrase: passphrase })
     .addOperation(Operation.invokeContractFunction({
       contract: contractId,
@@ -270,6 +372,15 @@ export function buildInvokeTx({
     .setTimeout(30)
     .build();
   return { state: "BUILD_OK", tx, function: functionName, error: null };
+}
+
+function ownerScValOrGated(ownerStr) {
+  if (typeof ownerStr !== "string" || !/^([GC])[A-Z2-7]{55}$/.test(ownerStr)) return null;
+  try {
+    return new Address(ownerStr).toScVal();
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -13,8 +13,8 @@
 
 | Claim | Status | Evidence | Test |
 |---|---|---|---|
-| 1436 tests passing | BUILT | `npm test` | scripts/run-tests.mjs |
-| 1047 files scanned | BUILT | boundary-audit.mjs | 0 violations |
+| 1451 tests passing | BUILT | `npm test` | scripts/run-tests.mjs |
+| 1050 files scanned | BUILT | boundary-audit.mjs | 0 violations |
 | 10,000-run benchmark | BUILT | 0 false accept, 0 false reject | benchmarks/ |
 | 1,000/1,000 mutants refused | BUILT | mutation lab | test/ |
 | Intent-to-execution conformance | BUILT | checkConformance() | packages/stellar/dex-gating.mjs |

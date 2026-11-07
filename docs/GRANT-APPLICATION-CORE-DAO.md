@@ -15,8 +15,8 @@ CoreGuard is a verifiable execution truth layer for Bitcoin DeFi. It produces in
 CoreGuard produces cryptographic evidence of conformance that can be independently replayed and verified. It works across Core DAO, Stellar, and Pi Network.
 
 ### 4. Traction
-- ✅ 1412 tests passing (machine-pinned)
-- ✅ 1009 files, 0 boundary violations
+- ✅ 1451 tests passing (machine-pinned)
+- ✅ 1050 files, 0 boundary violations
 - ✅ 10,000-run benchmark: 0 false accept, 0 false reject
 - ✅ Core DAO mainnet: 2 contracts deployed & verified
   - V1: `0x037dF08F2d43c5D03759279Fe35664f6AFf9EA6E`

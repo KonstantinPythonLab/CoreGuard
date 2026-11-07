@@ -103,6 +103,24 @@ jobs:
         run: node examples/vault/vault-demo.mjs --attack
       - name: Offline verifier sanity (no RPC)
         run: node packages/cli/src/index.js verify --receipt examples/transfer/receipt-valid.json --intent examples/transfer/intent.json --policy examples/transfer/policy.json --trace examples/transfer/trace.json  # The DDE evidence cycle moved to its own badge-visible workflow:
+
+  soroban-rust:
+    name: Soroban contract (Rust tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo build for cg-commitment-anchor
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: soroban/commitment-anchor
+      # The authorized lane + the cross-language known-answer vector: the
+      # Rust half runs here on every push (the primary dev box cannot
+      # execute freshly-built binaries — Application Control, os error 4551).
+      - name: cargo test (authorized lane + known-answer vector), --locked
+        run: cargo test --manifest-path soroban/commitment-anchor/Cargo.toml --locked
+
   # .github/workflows/dde.yml (same steps verbatim + the fuzz mode).
   # Workflow files themselves are gated by test/ci/workflow-yaml-contract.test.js
   # (real-YAML parse + Actions schema walk): an unparseable or schema-deviant
