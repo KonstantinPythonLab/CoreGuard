@@ -353,8 +353,8 @@ mod test {
             &[
                 0xc0, 0xdb, 0xfb, 0x45, 0xb6, 0xc8, 0xe1, 0x3b,
                 0x37, 0x38, 0x82, 0x23, 0x60, 0xea, 0x73, 0x7a,
-                0xdf, 0xc0, 0x45, 0xd4, 0xac, 0xb8, 0x0b, 0xda,
-                0xea, 0xc5, 0x63, 0xc8, 0xaf, 0x31, 0x05, 0x2b,
+                0xdf, 0xc0, 0x45, 0xd4, 0xac, 0xb8, 0x08, 0xbd,
+                0xae, 0xac, 0x56, 0x3c, 0x8a, 0xf3, 0x10, 0x52,
             ],
         )
     }
@@ -400,7 +400,7 @@ mod test {
         let address = auth_client(&env);
         let client = CgCommitmentAnchorClient::new(&env, &address);
         let owner_a = wallet(&env);
-        let owner_b = Address::from_str(&env, "GA7QYNF7SOWQ3GLZR2B55IHTF2HLKO4GDYTHI5NHE7YJTZVC7ZLDTXWJ");
+        let owner_b = Address::from_str(&env, "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN");
         let same_hash = executed_hash(&env);
         let other_hash = BytesN::from_array(&env, &[9u8; 32]);
 
@@ -416,6 +416,7 @@ mod test {
     #[test]
     fn commit_authorized_anchors_and_replays_idempotently() {
         let env = Env::default();
+        env.mock_all_auths();
         let address = auth_client(&env);
         let client = CgCommitmentAnchorClient::new(&env, &address);
         let owner = wallet(&env);
@@ -457,6 +458,7 @@ mod test {
     #[test]
     fn assert_anchored_authorized_is_exact_and_fail_closed() {
         let env = Env::default();
+        env.mock_all_auths();
         let address = auth_client(&env);
         let client = CgCommitmentAnchorClient::new(&env, &address);
         let owner = wallet(&env);
@@ -474,7 +476,7 @@ mod test {
         );
         // Wrong owner -> HashMismatch via the derivation gate (the derived id
         // is not the anchored id).
-        let other_owner = Address::from_str(&env, "GA7QYNF7SOWQ3GLZR2B55IHTF2HLKO4GDYTHI5NHE7YJTZVC7ZLDTXWJ");
+        let other_owner = Address::from_str(&env, "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN");
         assert_eq!(
             client.try_assert_anchored_authorized(&id, &other_owner, &hash),
             Err(Ok(CgError::HashMismatch))
@@ -500,10 +502,11 @@ mod test {
         // path: the attacker's own signature derives a DIFFERENT id, and the
         // owner's id can only be written by the owner's own tx.
         let env = Env::default();
+        env.mock_all_auths();
         let address = auth_client(&env);
         let client = CgCommitmentAnchorClient::new(&env, &address);
         let owner = wallet(&env);
-        let attacker = Address::from_str(&env, "GA7QYNF7SOWQ3GLZR2B55IHTF2HLKO4GDYTHI5NHE7YJTZVC7ZLDTXWJ");
+        let attacker = Address::from_str(&env, "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN");
         let hash = executed_hash(&env);
 
         let attacker_id = client.derive_authorized_id(&attacker, &hash);
@@ -522,6 +525,7 @@ mod test {
         // and vice versa: no shadowing, no cross-lane pollution, even for
         // identical content.
         let env = Env::default();
+        env.mock_all_auths();
         let address = auth_client(&env);
         let client = CgCommitmentAnchorClient::new(&env, &address);
         let owner = wallet(&env);
