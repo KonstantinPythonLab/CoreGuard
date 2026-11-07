@@ -282,6 +282,63 @@ Full evidence bundle: [scripts/verify-live.json](scripts/verify-live.json)
 (frozen historical record; live re-runs write to `scripts/verify-live.regenerated.json`).
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for how to reproduce every value.
 
+## Stellar mainnet — verified & executed · شبكة ستيلار الرئيسية — موثّقة ثم منفّذة
+
+CoreGuard's Stellar lane is no longer a plan: the same execution-truth stack —
+wallet, Soroban commitment anchor, agent/DEX gates, universal shield — is
+**verified then executed on Stellar mainnet**, with every step pinned to a
+committed, digest-checked artifact. Same shape as the Core anchor above:
+
+```
+Wallet:        GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U   (live Horizon account · first tx 0.1 XLM → SDF, ledger 65,308,317)
+Anchor:        CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP   (Soroban MAINNET DEPLOYED · deployment untouched, no re-deploy)
+Commit CALL:   commit(proofId, commitment) INVOKED · owner-authorized
+               tx 69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec · ledger 65,337,373 · read-back {hash, seq} exact
+Swap:          pathPaymentStrictSend CONFIRMED · owner-signed, real mainnet order book
+               tx ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097 · ledger 65,338,112
+Executed:      4.0598146 XLM → 0.6306239 USDC (rate 0.1553331 · destMin 0.6011661 cleared · DEX-GATE/1 preflight VERIFIED before submission)
+Verdict:       MAINNET VERIFIED (anchor call + funded swap) + three executed gate surfaces — later signed sweeps stay credential-gated
+```
+
+### Stellar on-chain truth · حقيقة ستيلار على السلسلة
+
+| Item | Value |
+|---|---|
+| Mainnet wallet — live | `GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U` — live Horizon account · first tx `0.1 XLM → SDF` at ledger **65,308,317** |
+| Soroban anchor (mainnet) | **MAINNET DEPLOYED** `CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP` — third-party-listed (stellar.expert: creator = the CoreGuard wallet, wasm hash recorded) · deployment untouched, no re-deploy |
+| Soroban anchor (testnet) | TESTNET VERIFIED `CCERTRITP7A6U4PQ7NUKHXKWL2BNRMSBLVAAAWWMRAZTICUN7ZGC5Q4R` — 11/11 tests |
+| First commitment-anchor CALL | **MAINNET VERIFIED** — owner-authorized `commit(proofId, commitment)` **INVOKED**: tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec` · ledger **65,337,373** · the exact chainId-1116 pair (proofId `0xecd9e6b3…cada6b8` = commitment `0xc0dbfb45…f31052`) · on-chain read-back `read(proofId)` = `{hash, seq}` exact |
+| First SIGNED FUNDED DEX swap | **CONFIRMED** — DEX-GATE/1 preflight VERIFIED (both gates) → owner-signed `pathPaymentStrictSend`: swap tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097` · ledger **65,338,112** (trustline tx `09243337fd04d7ead8e369a8a5d5ef48648179db84608b262d5379f34fa72d76` · ledger 65,338,111) · `4.0598146 XLM → 0.6306239 USDC` (0.1553331 USDC/XLM) · destMin `0.6011661` cleared · wallet-bounded within the real-depth ceiling · wire read-back equals `fee_charged` to the stroop · digest `sha256:837d063903f4905ececb6f051d9b2f5638079c2f35f4cc03163e9443e553ac2c` |
+| AI Agent Payment Gate (STELLAR-AGENT/1) | **POLICY-GATE EXECUTED** — VERIFIED / REJECTED / HELD matrix · submission stays credential-gated (never auto-pay) |
+| DEX gate (DEX-GATE/1) | **REAL-BOOK EXECUTED** — five verdicts against the REAL mainnet XLM/USDC order book (issuer network-discovered · depth-derived ceiling) · 9/9 tests |
+| Universal DApp Shield (guard.*) | **ARM-MODEL EXECUTED** — 2 ALLOW · 2 REQUIRE_REVIEW · 1 DENY · 1 REFUSED (Q-FW10) |
+| Wallet & submit surfaces | BUILT (credential-gated): Freighter wrapper `packages/stellar/freighter.mjs` · Mainnet Executor `packages/stellar/mainnet-executor.mjs` · mainnet config `packages/stellar/mainnet.mjs` |
+
+### Verify every Stellar claim offline · تحقق من كل ادعاء ستيلار دون اتصال
+
+```bash
+node scripts/stellar-soroban-commit-executed.mjs --verify   # anchor CALL re-derived · digest faithful · commit anchored on mainnet
+node scripts/stellar-dex-swap-executed.mjs --verify         # funded swap re-derived from raw wire read-backs · digest faithful
+node scripts/stellar-dex-gate-real.mjs --verify             # DEX-GATE/1 re-derived from the stored REAL mainnet book
+node scripts/stellar-agent-gate-executed.mjs --verify       # STELLAR-AGENT/1 verdict matrix intact
+node scripts/universal-shield-executed.mjs --verify         # shield arms intact (2 ALLOW · 2 REQUIRE_REVIEW · 1 DENY · 1 REFUSED)
+```
+
+Full Stellar deliverable catalog: [docs/PRODUCTS.md §11](docs/PRODUCTS.md) — every
+deliverable with its honest network-verified status · row-by-row evidence matrix:
+[docs/EVIDENCE-MATRIX.md](docs/EVIDENCE-MATRIX.md) · killer facts:
+[docs/STELLAR-KILLER-FEATURES.md](docs/STELLAR-KILLER-FEATURES.md) · integration guides:
+[docs/STELLAR-ECOSYSTEM-INTEGRATION.md](docs/STELLAR-ECOSYSTEM-INTEGRATION.md) · [docs/STELLAR-INTEGRATION-GUIDE.md](docs/STELLAR-INTEGRATION-GUIDE.md) ·
+mainnet tx record: [docs/STELLAR-MAINNET-TX.md](docs/STELLAR-MAINNET-TX.md) · intent-to-execution proof:
+[docs/INTENT-TO-EXECUTION-PROOF.md](docs/INTENT-TO-EXECUTION-PROOF.md) · one Trinity view with Core + Pi:
+[docs/TRINITY-CORE-STELLAR-PI.md](docs/TRINITY-CORE-STELLAR-PI.md).
+
+**Stellar honesty mirror (what is NOT claimed):** signed mainnet funded transfers
+beyond the ONE owner-authorized anchor commit CALL and the ONE owner-authorized
+gated swap — credential-gated owner decisions · npm SDK publication — double-gated
+pending `NPM_TOKEN` · SaaS live payment — owner rails pending · revenue, customers
+or partnerships — none.
+
 ## Quick start
 
 ```bash
@@ -670,6 +727,7 @@ the Decision Gate opens (after Counterparty #1). The machine view stamps
 |---|---|---|
 | Core **Testnet2** | 1114 | `https://rpc.test2.btcs.network` |
 | Core Mainnet | 1116 | `https://rpc.coredao.org` |
+| **Stellar Mainnet** (Soroban) | Soroban — no EVM chainId (Horizon network) | `https://horizon.stellar.org` |
 
 ```bash
 forge build                                   # 0.1 evidence registry (clean)
@@ -684,7 +742,7 @@ npm run anchor:verify                         # → scripts/verify-live.regenera
 ```
 spec/        CGEP/1 (draft) · master spec · canonical encoding · receipt · levels ·
              threat model · privacy model · competitive kill matrix · killer memos
-packages/    canonical · intent · policy · trace · evidence · firewall · verifier · evm · sdk · cli · delivery · provenance · pricing   (ESM)
+packages/    canonical · intent · policy · trace · evidence · firewall · verifier · evm · sdk · cli · delivery · provenance · pricing · stellar (Soroban lane: dex-gating · soroban-dex · freighter · mainnet-executor)   (ESM)
              — sdk/guard.js = guard.authorize/verify/anchor Phase-1 surface
              — provenance = Actor Identity Card + AgentProof surfaces (declared, never detected)
              — pricing = hypothesis plan table, Decision-Gate-locked (no enforcement, never bills)
@@ -723,6 +781,10 @@ submission/  Investor / Core Submission Pack (15 items) — run `npm run demo:90
 |---|---|
 | **v0.1 — Evidence protocol** (intent → trace → evidence → receipt → verifier → anchor) | 🔬 Testnet2 campaign PREPARED / FUNDING-BLOCKED (engine 73/73 PASS, live Mainnet anchor below) |
 | **v0.1 — On-chain anchor on Core** | ✅ live on Mainnet `0x037dF08F2d43c5D03759279Fe35664f6AFf9EA6E` (VERIFIED ANCHOR INTEGRITY) |
+| **v0.1 — Soroban commitment anchor on Stellar** | ✅ **MAINNET DEPLOYED** `CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP` (deployment untouched · creator = the CoreGuard wallet, first tx `0.1 XLM → SDF` ledger 65,308,317) + first `commit(proofId, commitment)` call **INVOKED** (owner-authorized · tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec` · ledger 65,337,373 · on-chain read-back exact) — `docs/evidence/stellar-soroban-commit-executed.json` |
+| **v0.2 — Stellar gate surfaces executed** (Agent Payment Gate · DEX gate · Universal Shield) | ✅ three EXECUTED surfaces with digest-checked artifacts: **STELLAR-AGENT/1** policy gate (VERIFIED / REJECTED / HELD matrix · submission credential-gated, never auto-pay) · **DEX-GATE/1** — five verdicts against the REAL XLM/USDC mainnet order book (issuer network-discovered, depth-derived ceiling) · **universal DApp-shield arms** (2 ALLOW · 2 REQUIRE_REVIEW · 1 DENY · 1 REFUSED) — `docs/evidence/stellar-agent-gate-executed.json` · `docs/evidence/stellar-dex-gate-executed.json` · `docs/evidence/universal-dapp-shield-executed.json` (each re-derivable offline — see the Stellar mainnet section) |
+| **v0.2 — First signed funded mainnet swap (Stellar)** | ✅ **CONFIRMED** — DEX-GATE/1 preflight VERIFIED (both gates) → owner-authorized `pathPaymentStrictSend` on the real mainnet order book: swap tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097` · ledger **65,338,112** (trustline tx `09243337fd04d7ead8e369a8a5d5ef48648179db84608b262d5379f34fa72d76` · ledger 65,338,111) · `4.0598146 XLM → 0.6306239 USDC` (0.1553331 USDC/XLM) · destMin `0.6011661` cleared · wire read-backs equal `fee_charged` to the stroop · evidence digest `sha256:837d063903f4905ececb6f051d9b2f5638079c2f35f4cc03163e9443e553ac2c` — `docs/evidence/stellar-dex-swap-executed.json` |
+| **Stellar products & services** (shipped surfaces) | ✅ `packages/stellar` — intent→policy→gate engine (`index.mjs`) · Soroban DEX gating (`dex-gating.mjs`, `soroban-dex.mjs`) · mainnet runner (`mainnet.mjs`, `mainnet-executor.mjs`, credential-gated) · Freighter wallet wrapper (`freighter.mjs`, credential-gated) · Stellar killer-facts + guides: [docs/STELLAR-KILLER-FEATURES.md](docs/STELLAR-KILLER-FEATURES.md) · [docs/STELLAR-ECOSYSTEM-INTEGRATION.md](docs/STELLAR-ECOSYSTEM-INTEGRATION.md) · [docs/STELLAR-INTEGRATION-GUIDE.md](docs/STELLAR-INTEGRATION-GUIDE.md) · [docs/STELLAR-MAINNET-TX.md](docs/STELLAR-MAINNET-TX.md) · [docs/INTENT-TO-EXECUTION-PROOF.md](docs/INTENT-TO-EXECUTION-PROOF.md) · [docs/GRANT-APPLICATION-STELLAR.md](docs/GRANT-APPLICATION-STELLAR.md) · Phase-3 plan [docs/STELLAR-PHASE3-2026-10.md](docs/STELLAR-PHASE3-2026-10.md) · [docs/STELLAR-PHASE3-2026-10-ar-2026-10.md](docs/STELLAR-PHASE3-2026-10-ar-2026-10.md) · one Trinity view with Core + Pi [docs/TRINITY-CORE-STELLAR-PI.md](docs/TRINITY-CORE-STELLAR-PI.md) — honest labels only: signed mainnet sweeps stay credential-gated, SaaS live payment awaits owner rails |
 | **v0.2 — Execution Firewall** (simulation-gated smart accounts, intent-based authorization) | ✅ Phase 1 delivered: engine (`packages/firewall`, attack-lab) + `@coreguard/sdk` guard.* + reference Vault ladder (`npx coreguard demo allow|attack`) + `coreguard-verify` CI action (plan-90d-repo §2) |
 | **v0.3 — Passport / reputation + risk findings** | ✅ first-pass shipped (2026-09-25): integration state machine + unified states · CoreGuard Conformance Suite (CG-CS/1) · **Evidence Passport** machine-readable registry · **Reputation (CG-RP/1) + risk-findings (CG-RF/1)** as enforced deterministic code (`npm run ladder:status` / `ladder:passport` / `ladder:dashboard` / `ladder:findings` / `ladder:reputation` — scratch `docs/live-integration-and-adoption-ladder-2026-09-25.md`); reputation = recorded external milestones only (never an amount); findings are risk findings only, never a fuzzy safety score |
 | **v0.3.1 — Verification & Integration Platform** | ✅ shipped (2026-09-26, continuous build): L0–L4 machine (`verify:levels` — L1 now needs a chain confirmation, structure alone is UNKNOWN) · 13-state integration machine (`integration:states`) · six-method **adapter contract** with DRY_RUN honesty (`adapters:status`) · **Partner Sandbox** 8 offline scenarios (`partner:sandbox`) · **Attack Lab** 10 tamper cases (`attack-lab`) · **Evidence Passport v2** (`passport:v2`) · dashboard **Control Plane** (derived only, `$0`/0/0 stay visible); map: `docs/verification-and-integration-platform-2026-09-26.md` |
