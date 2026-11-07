@@ -59,6 +59,12 @@ CoreGuard tells you whether execution **conformed to what was authorized** — n
 Row-by-row truth: [docs/EVIDENCE-MATRIX.md](https://github.com/coreguard-global/CoreGuard/blob/main/docs/EVIDENCE-MATRIX.md) · full deliverable catalog: [docs/PRODUCTS.md §11](https://github.com/coreguard-global/CoreGuard/blob/main/docs/PRODUCTS.md) · dedicated repo-README section: [CoreGuard/main/README.md](https://github.com/coreguard-global/CoreGuard/blob/main/README.md).
 **Never claimed:** signed sweeps beyond the ONE owner-authorized anchor call + the ONE gated swap · npm publication · revenue, customers or partnerships.
 
+**Stellar honesty mirror (what is NOT claimed):** signed mainnet funded transfers
+beyond the ONE owner-authorized anchor commit CALL and the ONE owner-authorized
+gated swap — credential-gated owner decisions · npm SDK publication — double-gated
+pending `NPM_TOKEN` · SaaS live payment — owner rails pending · revenue, customers
+or partnerships — none.
+
 ## ⚙️ What CoreGuard builds
 
 | Surface | What it delivers |

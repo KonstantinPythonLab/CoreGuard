@@ -25,7 +25,7 @@ CoreGuard extends its verifiable execution truth layer to Stellar: intent → po
 - ✅ First **owner-authorized anchor commit CALL INVOKED on mainnet** — exact chainId-1116 pair; on-chain read-back exact.
 - ✅ First **SIGNED FUNDED DEX swap CONFIRMED on the live mainnet order book** — DEX-GATE/1 preflight VERIFIED (both gates) → `pathPaymentStrictSend` CONFIRMED; wire read-back equals `fee_charged` to the stroop.
 - ✅ 11/11 Soroban integration tests (`test/integrations/stellar-soroban.test.mjs`).
-- ✅ Full suite **1436/1436 green** over 1045 files — CI-enforced via `docs/state-snapshot.json` (a stale number anywhere fails the build).
+- ✅ Full suite **1436/1436 green** over 1047 files — CI-enforced via `docs/state-snapshot.json` (a stale number anywhere fails the build).
 - ✅ Five offline `--verify` re-derivation runners: `stellar-soroban-commit-executed` · `stellar-dex-gate-real` · `stellar-dex-swap-executed` · `stellar-agent-gate-executed` · `universal-shield-executed`.
 - ✅ Stellar docs SHIPPED: `STELLAR-KILLER-FEATURES` · `STELLAR-ECOSYSTEM-INTEGRATION` · `STELLAR-INTEGRATION-GUIDE` · `STELLAR-MAINNET-TX` · `INTENT-TO-EXECUTION-PROOF` · `EVIDENCE-MATRIX`.
 - ✅ Public executed-truth surfaces: the organization profile README (⭐ Stellar section, commit `641ca2d3ad9399a61209f9c7fd8c1ff16e786db4`), the dedicated repo-README section, `docs/EVIDENCE-MATRIX.md#stellar`, and the community executed-truth announcement [discussion #3](https://github.com/coreguard-global/.github/discussions/3) (Arabic-first + EN mirror) carrying the five-runner self-verify walkthrough.

@@ -102,7 +102,7 @@
   ],
   "engineering": {
     "testsTotal": 1436,
-    "filesScanned": 1045,
+    "filesScanned": 1047,
     "violations": 0,
     "docsNode": {
       "executed": 120,

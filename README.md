@@ -791,6 +791,12 @@ submission/  Investor / Core Submission Pack (15 items) — run `npm run demo:90
 | **v0.3.2 — Commercial surfaces** | ✅ shipped (2026-09-26): the two roadmap rows that were prose-only are now real code — **CG-WH/1** webhook receiver (`npm run webhook`: domain-separated HMAC over exact bytes, replay window that rejects stale AND future-dated deliveries, mandatory Idempotency-Key whose replay never re-runs the handler; no keyless mode, DRY_RUN never performs) · **X402/1** harness (`npm run x402`: canonical 402 challenge, and no price — none, zero, or unlocked — opens a payment gate; `settle()` books $0) · **CG-CR/1** machine-readable conformance report with `badgeIssuers: 0` (`conformance:report`) · three-verb **quickstart** (`quickstart`) · five-tier **commercial packaging** with prices LOCKED and a build-failing test that checks every cited path and any `$` amount (`docs/commercial-packaging-2026-09-26.md`) |
 | **v0.4 — ZK privacy proofs (L4)** | 🔬 research |
 
+**Stellar honesty mirror (what is NOT claimed):** signed mainnet funded transfers
+beyond the ONE owner-authorized anchor commit CALL and the ONE owner-authorized
+gated swap — credential-gated owner decisions · npm SDK publication — double-gated
+pending `NPM_TOKEN` · SaaS live payment — owner rails pending · revenue, customers
+or partnerships — none.
+
 ## Work with us
 
 CoreGuard is looking for funding and builders — milestone-based, Core-native,

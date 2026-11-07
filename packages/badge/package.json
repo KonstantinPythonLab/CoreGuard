@@ -1,0 +1,43 @@
+{
+  "name": "@coreguard-global/coreguard-badge",
+  "version": "1.1.0",
+  "description": "CG-BDG/1 — the CoreGuard self-verifying badge engine. Derived artwork that is a pure function of its evidence record: two different records produce two different payloads, the same record always produces the same bytes, and verifyBadge() re-derives the digest from the record, so a forged badge fails verification. Zero runtime dependencies.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coreguard-global/CoreGuard.git",
+    "directory": "packages/badge"
+  },
+  "homepage": "https://github.com/coreguard-global/CoreGuard",
+  "author": "EslaM-X (CoreGuard Global)",
+  "bugs": {
+    "url": "https://github.com/coreguard-global/CoreGuard/issues"
+  },
+  "keywords": [
+    "coreguard",
+    "stellar",
+    "soroban",
+    "core-dao",
+    "badge",
+    "sha256",
+    "evidence",
+    "verifiable-evidence",
+    "execution-integrity",
+    "fail-closed"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

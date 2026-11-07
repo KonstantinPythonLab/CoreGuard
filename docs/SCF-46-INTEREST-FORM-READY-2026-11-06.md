@@ -54,14 +54,14 @@ Stellar agent marketplaces, DEXs, and A2A rails need this exact surface, and Ste
 ## 8. Traction / progress (all machine-measured, 2026-11-06)
 
 - **Test suite:** 1436 / 1436 pass (state snapshot: `docs/state-snapshot.json`; suite-total enforcement bites on drift).
-- **Boundary:** 1045 tracked files with 0 violations.
+- **Boundary:** 1047 tracked files with 0 violations.
 - **Core DAO mainnet:** 2 contracts deployed and verified; 2 MAINNET VERIFIED transactions (see `scripts/verify-live.json`: commitIntent tx 0x0cd2a8…715c, anchorProof tx 0x5b9e7d…78d2).
 - **Stellar mainnet anchor:** contract `CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP` deployed 2026-11-04 (stellar.expert-listed); first anchor CALL INVOKED 2026-11-06 — tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec`, ledger 65,337,373, on-chain read-back exact.
 - **First SIGNED funded swap (this cycle):** `pathPaymentStrictSend` CONFIRMED on the real XLM/USDC order book after both DEX-GATE/1 preflight gates passed VERIFIED — swap tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097`, ledger 65,338,112; USDC trustline tx `09243337fd04d7ead8e369a8a5d5ef48648179db84608b262d5379f34fa72d76`, ledger 65,338,111; sent 4.0598146 XLM, received 0.6306239 USDC (0.1553331 USDC/XLM); destMin 0.6011661 cleared; the recorded wire read-back equals Horizon's own `fee_charged` to the stroop; evidence: `docs/evidence/stellar-dex-swap-executed.json` (verify: `node scripts/stellar-dex-swap-executed.mjs --verify`).
 - **Docs node contract:** 115 documented commands executed / 75 skip-listed / 25 docs covered — the documented-command contract is enforced on every push.
 - **Benchmarks:** 10,000-run integrity benchmark (0 false accepts, 0 false rejects); mutation lab 1000/1000 mutants refused.
 
-*AR: 1436/1436 اختبارًا · 1045 ملفًا · 0 مخالفات · عقديان على Core DAO · استدعاء anchor منفذ وswap موقّع مؤكد على شبكة ستيلار الرئيسية.*
+*AR: 1436/1436 اختبارًا · 1047 ملفًا · 0 مخالفات · عقديان على Core DAO · استدعاء anchor منفذ وswap موقّع مؤكد على شبكة ستيلار الرئيسية.*
 
 ## 9. Team
 
