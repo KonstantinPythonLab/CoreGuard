@@ -175,13 +175,15 @@ impl CgCommitmentAnchor {
     /// anchored — the derivation itself never trusts a caller's arithmetic.
     pub fn derive_authorized_id(env: Env, owner: Address, hash: BytesN<32>) -> BytesN<32> {
         let mut pre = Bytes::new(&env);
-        pre.extend_from_array(&env, AUTH_DOMAIN.as_bytes());
-        let owner_label = owner.to_string(&env);
-        let owner_label_bytes: Bytes = owner_label.to_bytes(&env);
+        pre.extend_from_array(b"coreguard-anchor-auth/1");
+        let owner_label = owner.to_string();
+        let owner_label_bytes: Bytes = owner_label.to_bytes();
+        let mut chunk = [0u8; 1];
         for b in owner_label_bytes.iter() {
-            pre.push(&env, b);
+            chunk[0] = b;
+            pre.extend_from_array(&chunk);
         }
-        pre.extend_from_array(&env, &hash.to_array());
+        pre.extend_from_array(&hash.to_array());
         env.crypto().sha256(&pre).into()
     }
 
@@ -504,15 +506,14 @@ mod test {
         let attacker = Address::from_str(&env, "GA7QYNF7SOWQ3GLZR2B55IHTF2HLKO4GDYTHI5NHE7YJTZVC7ZLDTXWJ");
         let hash = executed_hash(&env);
 
-        let attacker_id = client.commit_authorized(&attacker, &hash);
+        let attacker_id = client.derive_authorized_id(&attacker, &hash);
         let owner_id = client.derive_authorized_id(&owner, &hash);
         // Distinct roots at the write surface, not just at derivation:
         assert_ne!(attacker_id, owner_id);
-        assert_ne!(attacker_id, client.commit_authorized(&attacker, &hash));
-        // And the owner's lane is still free until the owner writes it.
-        // ( attacker's entry cannot be read through the owner's id. )
+        let attacker_seq = client.commit_authorized(&attacker, &hash);
         let attacker_anchor = client.read_authorized(&attacker_id).unwrap();
         assert_eq!(attacker_anchor.owner, attacker);
+        assert_eq!(attacker_anchor.seq, attacker_seq);
     }
 
     #[test]
