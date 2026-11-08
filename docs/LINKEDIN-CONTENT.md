@@ -54,7 +54,7 @@ CoreGuard Global — Traction Update
 ✅ Core DAO mainnet: 2 contracts deployed & verified
 ✅ Stellar testnet: Soroban contract deployed
 ✅ 1451 tests passing
-✅ 1050 files scanned, 0 boundary violations
+✅ 1052 files scanned, 0 boundary violations
 ✅ 10,000-run benchmark: 0 false accept/reject
 ✅ 18/18 release gate legs pass
 

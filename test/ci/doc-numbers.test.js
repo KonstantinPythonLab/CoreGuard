@@ -50,6 +50,8 @@ const TOTAL = Number(snapshot.testsTotal);
 const ALLOWED = new Set([
   "AGENTS.md",
   "docs/FINAL-REPORT-2026-09-19.md",
+  "docs/FINAL-REPORT-2026-11-07-ar.md", // hardening-batch final report, 2026-11-07 (SHA-pinned to ea7e154)
+  "docs/FINAL-REPORT-2026-11-07.md", // hardening-batch final report, 2026-11-07 (SHA-pinned to ea7e154)
   "docs/OWNER-DECISIONS-2026-09-19.md",
   "docs/adoption/README.md",
   "docs/campaign-ops-outreach-kit-2026-09-25.md",
