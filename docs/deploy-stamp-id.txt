@@ -1,0 +1,1 @@
+# Deploy stamp\nLive surfaced on: 2026-11-05\nLatest main commit shipped: https://github.com/coreguard-global/CoreGuard/commit/4b88bcf\n

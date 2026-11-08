@@ -127,17 +127,17 @@ jobs:
       # source of deploy bytes. The artifact carries the run's own SHA, and the
       # deploy runner refuses any material whose recorded headSha is not an
       # ancestor of HEAD (fail-closed provenance, not an assumption).
-      - name: Install wasm32v1-none target
-        run: rustup target add wasm32v1-none
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
       - name: cargo build (wasm deploy material), --locked
-        run: cargo build --manifest-path soroban/commitment-anchor/Cargo.toml --target wasm32v1-none --release --locked
+        run: cargo build --manifest-path soroban/commitment-anchor/Cargo.toml --target wasm32-unknown-unknown --release --locked
       - name: Deploy material identity (sha256, printed for the run log)
-        run: sha256sum soroban/commitment-anchor/target/wasm32v1-none/release/cg_commitment_anchor.wasm
+        run: sha256sum soroban/commitment-anchor/target/wasm32-unknown-unknown/release/cg_commitment_anchor.wasm
       - name: Upload deploy material
         uses: actions/upload-artifact@v4
         with:
           name: cg-commitment-anchor-wasm
-          path: soroban/commitment-anchor/target/wasm32v1-none/release/cg_commitment_anchor.wasm
+          path: soroban/commitment-anchor/target/wasm32-unknown-unknown/release/cg_commitment_anchor.wasm
           if-no-files-found: error
           retention-days: 30
 
