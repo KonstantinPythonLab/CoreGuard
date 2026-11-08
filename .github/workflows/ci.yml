@@ -120,6 +120,26 @@ jobs:
       # execute freshly-built binaries — Application Control, os error 4551).
       - name: cargo test (authorized lane + known-answer vector), --locked
         run: cargo test --manifest-path soroban/commitment-anchor/Cargo.toml --locked
+      # OWNER-AUTHORIZED DEPLOY MATERIAL (docs/OWNER-DECISIONS-2026-11-08.md):
+      # the wasm deployed to mainnet MUST be built from THIS head's committed
+      # source — the in-tree artifact predates the authorized lane (a80d8f9)
+      # and the dev box cannot run cargo ([C39]), so CI is the only honest
+      # source of deploy bytes. The artifact carries the run's own SHA, and the
+      # deploy runner refuses any material whose recorded headSha is not an
+      # ancestor of HEAD (fail-closed provenance, not an assumption).
+      - name: Install wasm32v1-none target
+        run: rustup target add wasm32v1-none
+      - name: cargo build (wasm deploy material), --locked
+        run: cargo build --manifest-path soroban/commitment-anchor/Cargo.toml --target wasm32v1-none --release --locked
+      - name: Deploy material identity (sha256, printed for the run log)
+        run: sha256sum soroban/commitment-anchor/target/wasm32v1-none/release/cg_commitment_anchor.wasm
+      - name: Upload deploy material
+        uses: actions/upload-artifact@v4
+        with:
+          name: cg-commitment-anchor-wasm
+          path: soroban/commitment-anchor/target/wasm32v1-none/release/cg_commitment_anchor.wasm
+          if-no-files-found: error
+          retention-days: 30
 
   # .github/workflows/dde.yml (same steps verbatim + the fuzz mode).
   # Workflow files themselves are gated by test/ci/workflow-yaml-contract.test.js
