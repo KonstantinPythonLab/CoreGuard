@@ -20,7 +20,7 @@
   <a href="https://coreguard-global.github.io/CoreGuard/PRODUCTS.html"><img src="https://coreguard-global.github.io/CoreGuard/assets/badges/cg-bdg-1-badges.svg" alt="CG-BDG/1 badges"></a>
   <a href="https://coreguard-global.github.io/CoreGuard/GOVERNANCE-DASHBOARD.html"><img src="https://coreguard-global.github.io/CoreGuard/assets/badges/cg-cl-1-claims.svg" alt="CG-CL/1 claims"></a>
   <a href="https://coreguard-global.github.io/CoreGuard/"><img src="https://coreguard-global.github.io/CoreGuard/assets/badges/core-mainnet-anchor.svg" alt="Core Mainnet anchor"></a>
-  <a href="https://github.com/coreguard-global/CoreGuard/actions"><img src="https://coreguard-global.github.io/CoreGuard/assets/badges/ci-1427-tests.svg" alt="CI 1427 tests"></a>
+  <a href="https://github.com/coreguard-global/CoreGuard/actions"><img src="https://coreguard-global.github.io/CoreGuard/assets/badges/ci-1467-tests.svg" alt="CI 1467 tests"></a>
   <a href="https://www.linkedin.com/company/coreguard-global"><img src="https://img.shields.io/badge/LinkedIn-CoreGuard%20Global-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="LinkedIn"></a>
   <a href="https://twitter.com/CoreGuardGlobal"><img src="https://img.shields.io/badge/Twitter-@CoreGuardGlobal-1DA1F2?style=flat-square&logo=twitter&logoColor=white" alt="Twitter"></a>
 </p>
