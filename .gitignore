@@ -30,3 +30,6 @@ soroban/**/target/
 
 # Stellar wallet (NEVER commit)
 .stellar-wallet.json
+
+# nested repo of the parallel session (never tracked here)
+WEB-coreguard/
