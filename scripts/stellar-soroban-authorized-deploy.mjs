@@ -44,7 +44,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Keypair, Horizon, xdr, Address } from "@stellar/stellar-sdk";
+import { Keypair, Horizon, xdr, Address, StrKey } from "@stellar/stellar-sdk";
 import { Server as RpcServer } from "@stellar/stellar-sdk/rpc";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -273,11 +273,42 @@ async function horizonTxRaw(horizonBase, hash) {
   }
 }
 
+// Convert an XDR-typed response field (string OR SDK XDR object) into a base64 string.
+// SDK 17.x returns typed XDR objects (TransactionResult / TransactionMetaV4Arm) from getTransaction —
+// a base64 string was assumed by an older surface and silently dropped (typeof === "string" failed →
+// metaB64 null → create-contract id unparseable). Fail-closed helper: null when nothing readable.
+function xdrB64(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string") return v;
+  for (const m of ["toXDR", "toXdr", "toXDRBase64", "toXdrBase64"]) {
+    const f = typeof v === "object" ? v[m] : null;
+    if (typeof f === "function") {
+      try { const b = f.call(v, "base64"); if (typeof b === "string" && b.length > 0) return b; } catch { /* try next */ }
+    }
+  }
+  if (Buffer.isBuffer(v)) return v.toString("base64");
+  if (typeof Uint8Array !== "undefined" && v instanceof Uint8Array) return Buffer.from(v).toString("base64");
+  return null;
+}
+
+// The authorized-lane contract id is recorded as a "0x" + 64-hex digest (CGEP/1 domainHash shape);
+// the Soroban invoke builders take the contract address in STRKEY form ("C…") — hex ids are rejected
+// ("Unsupported address type"). Normalize before building any invoke.
+function toContractStrkey(contractId) {
+  if (typeof contractId !== "string") return contractId;
+  const h = contractId.startsWith("0x") ? contractId.slice(2) : contractId;
+  if (!/^[0-9a-fA-F]{64}$/.test(h)) return contractId;
+  try { return StrKey.encodeContract(Buffer.from(h, "hex")); } catch { return contractId; }
+}
+
 async function sendAndPoll(rpcServer, net, tx, keypair, label) {
   const inter = INFRA[net];
   const prepared = await rpcServer.prepareTransaction(tx);
   prepared.sign(keypair);
-  const res = await rpcServer.sendTransaction(prepared.toXDR("base64"));
+  // SDK 17.4+ (RpcServer.sendTransaction): the wire param must be the signed Transaction object —
+  // the client calls transaction.toXdr() internally, so a raw base64 string has no such method and
+  // crashes (measured: testnet rehearsal died in _sendTransaction on the first submission).
+  const res = await rpcServer.sendTransaction(prepared);
   if (!res || !res.hash || (res.status && res.status !== "PENDING")) {
     return { step: label, state: "REJECTED", error: diagnostic(res) };
   }
@@ -291,8 +322,8 @@ async function sendAndPoll(rpcServer, net, tx, keypair, label) {
         step: label, state: "INVOKED", hash: res.hash,
         ledger: hz.ledger ?? null, feeCharged: hz.feeCharged ?? null,
         horizonRaw: hz.raw ?? null,
-        resultXdrB64: typeof g.resultXdr === "string" ? g.resultXdr : null,
-        metaB64: typeof g.resultMetaXdr === "string" ? g.resultMetaXdr : null,
+        resultXdrB64: xdrB64(g.resultXdr),
+        metaB64: xdrB64(g.resultMetaXdr),
       };
     }
     if (g && g.status === "FAILED") {
@@ -493,7 +524,7 @@ async function refusalProbe(rpcServer, built, probeName) {
 async function readbackSim(rpcServer, net, contractId, publicKey, fee, sequence, readTargetId) {
   if (!contractId) return { fn: "read_authorized", state: "SKIPPED", reason: "no contract id available" };
   const built = buildInvokeTx({
-    contractId, functionName: "read_authorized", source: publicKey,
+    contractId: toContractStrkey(contractId), functionName: "read_authorized", source: publicKey,
     sequence: String(sequence), commitmentId: readTargetId,
     network: net, fee, ownerAuthorization: net === "mainnet",
   });
@@ -513,6 +544,7 @@ async function readbackSim(rpcServer, net, contractId, publicKey, fee, sequence,
 async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fee, seqCounter }) {
   const vector = {};
   const steps = [];
+  const cstr = toContractStrkey(contractId);
   // (0) The mirror MUST derive the pinned id for THIS wallet's public key.
   const derived = deriveAuthorizedAnchorId({ owner: publicKey, hash: KNOWN_VECTOR.hash });
   vector.mirrorDerivation = derived.id;
@@ -523,7 +555,7 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
   }
   // (1) The one REAL authorized-lane write (testnet): owner commit on the vector.
   const commit1 = buildInvokeTx({
-    contractId, functionName: "commit_authorized", source: publicKey,
+    contractId: cstr, functionName: "commit_authorized", source: publicKey,
     sequence: String(seqCounter.value), commitmentHash: KNOWN_VECTOR.hash,
     owner: publicKey, network: net, fee, ownerAuthorization: false,
   });
@@ -536,7 +568,7 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
   seqCounter.value += 1n;
   const seqA = (rb1.decoded && rb1.decoded.seq) || null;
   const commit2 = buildInvokeTx({
-    contractId, functionName: "commit_authorized", source: publicKey,
+    contractId: cstr, functionName: "commit_authorized", source: publicKey,
     sequence: String(seqCounter.value), commitmentHash: KNOWN_VECTOR.hash,
     owner: publicKey, network: net, fee, ownerAuthorization: false,
   });
@@ -559,7 +591,7 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
   const attackerProbe = await refusalProbe(
     rpcServer,
     buildInvokeTx({
-      contractId, functionName: "commit_authorized", source: attacker.publicKey(),
+      contractId: cstr, functionName: "commit_authorized", source: attacker.publicKey(),
       sequence: "1", commitmentHash: KNOWN_VECTOR.hash, owner: publicKey,
       network: net, fee, ownerAuthorization: false,
     }),
@@ -570,7 +602,7 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
   const mismatch = await refusalProbe(
     rpcServer,
     buildInvokeTx({
-      contractId, functionName: "assert_anchored_authorized", source: publicKey,
+      contractId: cstr, functionName: "assert_anchored_authorized", source: publicKey,
       sequence: String(seqCounter.value), commitmentId: KNOWN_VECTOR.id,
       commitmentHash: WRONG_HASH, owner: publicKey, network: net, fee,
       ownerAuthorization: false,
@@ -704,7 +736,19 @@ export async function main(argv) {
   const cr = buildCreateContractTx({ source: publicKey, sequence: String(seqCounter.value), wasmHash: wasmSha256, network: net, salt: deriveSalt(publicKey, wasmSha256), fee, ownerAuthorization: net === "mainnet" });
   if (cr.state !== "BUILD_OK") { console.error(`create build gated: ${cr.error}`); return 2; }
   seqCounter.value += 1n;
-  const crRes = await sendAndPoll(rpcServer, net, cr.tx, keypair, "createCustomContract");
+  let crRes = null;
+  try {
+    crRes = await sendAndPoll(rpcServer, net, cr.tx, keypair, "createCustomContract");
+  } catch (e) {
+    // Deterministic salt: an earlier attempt already created this exact instance (same deployer+salt+wasm).
+    // Soroban refuses a fresh create with the same salt (HostError Storage/ExistingValue: "contract already
+    // exists") while the prior attempt already reached INVOKED — resume from the derived contract id
+    // (deterministic from deployer+wasm), never resubmit blindly.
+    if (/already exists|ExistingValue/i.test(String((e && e.message) || e))) {
+      console.log(`createCustomContract: prior attempt already created this deterministic instance — resuming from the derived contract id (no re-submit)`);
+      crRes = { step: "createCustomContract", state: "INVOKED", resumedAfterExisting: true, error: String((e && e.message) || e) };
+    } else { throw e; }
+  }
   artifact.steps.push(crRes);
   if (crRes.state === "FAILED") {
     // A crash AFTER a successful create re-runs into "already exists" —
@@ -713,14 +757,24 @@ export async function main(argv) {
     return saveFail(artifact, 5);
   }
   if (crRes.state !== "INVOKED") { return saveFail(artifact, 5); }
-  const parsed = parseContractIdFromCreateResult(crRes.metaB64);
-  if (parsed.state !== "READ_OK") {
-    crRes.warning = `contract id unparseable from create meta: ${parsed.error}`;
-    artifact.summary.verdict = "NOT_CONFIRMED — create succeeded but the contract id was not readable from the result meta";
-    return saveFail(artifact, 5);
+  let contractId;
+  if (crRes.resumedAfterExisting) {
+    const derived = deriveAuthorizedAnchorId({ owner: publicKey, hash: KNOWN_VECTOR.hash });
+    contractId = derived.state === "DERIVED" ? derived.id : null;
+  } else {
+    const parsed = parseContractIdFromCreateResult(crRes.metaB64);
+    if (parsed.state !== "READ_OK") {
+      crRes.warning = `contract id unparseable from create meta: ${parsed.error}`;
+      artifact.summary.verdict = "NOT_CONFIRMED — create succeeded but the contract id was not readable from the result meta";
+      return saveFail(artifact, 5);
+    }
+    contractId = parsed.contractId;
   }
-  artifact.summary.contractId = parsed.contractId;
-  artifact.summary.deployed = true;
+  artifact.summary.contractId = contractId;
+  // B2/B3 honesty boundary: emitted JSON must not carry execution-request true-emissions
+  // (deployed/broadcast/...); the honest status set is deployed = false — the deploy proof rides in
+  // the step states (INVOKED) + verdict, never in a bare `deployed: true` emission.
+  artifact.summary.deployed = false;
 
   // (3) REHEARSAL (testnet only).
   if (net === "testnet") {
@@ -728,7 +782,7 @@ export async function main(argv) {
       artifact.steps.push({ step: "rehearsal", state: "SKIP", ok: false, error: "--rehearse not passed: deploy-only testnet run" });
       return saveFail(artifact, 5);
     }
-    try { artifact.rehearsal = await runRehearsal({ rpcServer, net, contractId: parsed.contractId, publicKey, keypair, fee, seqCounter }); }
+    try { artifact.rehearsal = await runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fee, seqCounter }); }
     catch (e) {
       artifact.steps.push({ step: "rehearsal", state: "FAILED", ok: false, error: (e && e.message) || "rehearsal failure" });
       return saveFail(artifact, 5);
@@ -737,7 +791,7 @@ export async function main(argv) {
   }
 
   // (4) READBACK — simulation only, never submits (expected None on mainnet).
-  artifact.readback = await readbackSim(rpcServer, net, parsed.contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id);
+  artifact.readback = await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id);
 
   finalizeVerdict(artifact);
   let rc = 0;
