@@ -13,7 +13,7 @@
 
 | Claim | Status | Evidence | Test |
 |---|---|---|---|
-| 1467 tests passing | BUILT | `npm test` | scripts/run-tests.mjs |
+| 1468 tests passing | BUILT | `npm test` | scripts/run-tests.mjs |
 | 1052 files scanned | BUILT | boundary-audit.mjs | 0 violations |
 | 10,000-run benchmark | BUILT | 0 false accept, 0 false reject | benchmarks/ |
 | 1,000/1,000 mutants refused | BUILT | mutation lab | test/ |

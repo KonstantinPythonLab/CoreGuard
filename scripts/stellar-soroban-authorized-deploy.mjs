@@ -76,7 +76,10 @@ export const KNOWN_VECTOR = {
 /** Byte-flipped vector hash — ONLY for the fail-closed mismatch probe. */
 export const WRONG_HASH = "0xc1dbfb45b6c8e13b3738822360ea737adfc045d4acb808bdaeac563c8af31052";
 
-class Fail extends Error {}
+class Fail extends Error {
+  /** Attach the partial steps list so a caught run can surface diagnostics. */
+  constructor(msg, steps) { super(msg); this.steps = steps || null; }
+}
 
 const MAINNET = { decisions: null }; // recorded decision doc parsed once per run
 
@@ -303,8 +306,33 @@ function toContractStrkey(contractId) {
 
 async function sendAndPoll(rpcServer, net, tx, keypair, label) {
   const inter = INFRA[net];
-  const prepared = await rpcServer.prepareTransaction(tx);
-  prepared.sign(keypair);
+  // Transient-network retry (preparation phase ONLY): prepareTransaction + sign may
+  // hit a brief connection failure (undici "fetch failed", measured 2026-11-08
+  // mid-rehearsal on the first commit). Nothing has been submitted at this point,
+  // so a retry re-prepares the SAME reserved sequence slot — the bookkeeping stays
+  // exact. HostError is a deterministic host verdict and is NEVER retried; a throw
+  // from sendTransaction itself is NOT retried (may-or-may-not-have-landed
+  // ambiguity — fail-closed instead of risking a double-send).
+  const isTransient = (e) => {
+    const m = String((e && e.message) || e);
+    if (/HostError/i.test(m)) return false;
+    return /fetch failed|ConnectTimeout|UND_ERR|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|network/i.test(m);
+  };
+  let prepared = null;
+  let prepErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      prepared = await rpcServer.prepareTransaction(tx);
+      prepared.sign(keypair);
+      prepErr = null;
+      break;
+    } catch (e) {
+      prepErr = e;
+      if (!isTransient(e)) throw e;
+      if (attempt < 2) { console.log(`${label}: transient preparation failure (${String((e && e.message) || e)}) — retrying once (nothing submitted)`); await sleep(3000); }
+    }
+  }
+  if (prepErr || !prepared) throw prepErr;
   // SDK 17.4+ (RpcServer.sendTransaction): the wire param must be the signed Transaction object —
   // the client calls transaction.toXdr() internally, so a raw base64 string has no such method and
   // crashes (measured: testnet rehearsal died in _sendTransaction on the first submission).
@@ -338,8 +366,39 @@ async function sendAndPoll(rpcServer, net, tx, keypair, label) {
 }
 
 function diagnostic(res) {
-  try { return JSON.stringify({ status: res.status, hash: res.hash, errorResultXdr: res.errorResultXdr }); }
-  catch { return "(undecodable sendTransaction response)"; }
+  // SDK 17.4 raw sendTransaction parses errorResultXdr into a TYPED `errorResult`
+  // (TransactionResult object) and DELETES the raw string field — so read both
+  // faces. Include the base64 result bytes (machine-readable) + a decoded
+  // transaction/op code chain (human-readable) when decodable.
+  try {
+    const parts = { status: res && res.status, hash: (res && res.hash) || null };
+    const er = res && (res.errorResultXdr || res.errorResult) || null;
+    let b64 = null;
+    if (typeof er === "string") b64 = er;
+    else if (er && typeof er.toXDR === "function") b64 = er.toXDR("base64");
+    else if (er && typeof er.toXdr === "function") b64 = er.toXdr("base64");
+    if (b64) parts.errorResultXdr = b64;
+    if (b64) {
+      try {
+        const tr = xdr.TransactionResult.fromXDR(b64, "base64");
+        const bodyArm = tr && (tr.type || null);
+        const body = tr && (tr.value !== undefined ? tr.value : tr);
+        const inner = body && body.errorResultXdr !== undefined ? body.errorResultXdr : body;
+        const results = inner && inner.results ? inner.results : (body && body.results) || [];
+        parts.resultCode = bodyArm || null;
+        parts.operationResults = results.map((r) => {
+          const t = r && (r.type || null);
+          const v = r && (r.value !== undefined ? r.value : r);
+          const inv = v && v.invokeHostFunctionResult;
+          return t && t !== 'invokeHostFunctionResultSuccess' && inv ? `op:${t}` : (t || null);
+        }).filter(Boolean);
+      } catch { /* keep the raw bytes only */ }
+    }
+    if (res && res.diagnosticEvents && Array.isArray(res.diagnosticEvents)) {
+      try { parts.diagnosticEventsXdrB64 = res.diagnosticEvents.map((d) => (typeof d === "string" ? d : (typeof d.toXDR === "function" ? d.toXDR("base64") : null))).filter(Boolean); } catch {}
+    }
+    return JSON.stringify(parts);
+  } catch { return "(undecodable sendTransaction response)"; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -349,6 +408,21 @@ function diagnostic(res) {
 
 function armOf(v) { // e.g. "scvVec" | "scvBool" — xdr-object switch() OR POJO .type
   return typeof v.switch === "function" ? v.switch().name : ((v.switch && v.switch.name) || v.type);
+}
+
+/**
+ * Proxy-safe member accessor. SDK 17.4 ships per-arm classes whose OWN value
+ * props (`credentials`, `addressV2`, `address`, `type`, …) SHADOW the prototype
+ * accessor methods — reading `entry.credentials` yielded the VALUE while the
+ * legacy method-shaped read threw "e.credentials is not a function"
+ * (measured against the live soroban-testnet sim face 2026-11-08). Call a
+ * function member when it is declared as one and read it otherwise.
+ */
+function callOrProp(v, name) {
+  if (v === null || v === undefined) return undefined;
+  const own = v[name];
+  if (own === undefined) return undefined;
+  return typeof own === "function" ? own.call(v) : own;
 }
 
 function rawOf(v) { // xdr-object .value() OR POJO .value OR the arm-named field
@@ -372,8 +446,54 @@ export function decodeAuthorizedAnchorScVal(rv) {
   if (!val || typeof val !== "object") return { kind: "UNDECODABLE" };
   const arm = armOf(val);
   if (arm === "scvBool") return { kind: "NONE" }; // soroban Option::None
-  if (arm === "scvVec") return decodeStruct(safeVecChildren(val));
+  // Typed-sim truth (soroban-testnet live sim 2026-11-08): the host serializes
+  // the AuthorizedAnchor contracttype as a scvMap keyed by symbols —
+  // {hash: scvBytes 32B, owner: scvAddress(account), seq: scvU32} — the 3-field
+  // vec face comes only from event payloads. Both faces stay supported.
+  if (arm === "scvMap") return decodeMapStruct(val);
+  if (arm === "scvVec") {
+    const kids = safeVecChildren(val);
+    if (kids.length === 1 && kids[0] && typeof kids[0] === "object" && armOf(kids[0]) === "scvMap") return decodeMapStruct(kids[0]);
+    return decodeStruct(kids);
+  }
   return { kind: "UNDECODABLE", arm };
+}
+
+function safeMapEntries(v) {
+  let entries;
+  try { entries = callOrProp(v, "map"); } catch { return []; }
+  if (!Array.isArray(entries)) return [];
+  return entries.map((row) => {
+    let sym = null;
+    let value = null;
+    try {
+      const k = callOrProp(row, "key");
+      if (k && armOf(k) === "scvSymbol") {
+        const x = callOrProp(k, "sym") ?? rawOf(k); // arm-named field is "sym" (rawOf's derived "symbol" is NOT the real prop name)
+        const b = typeof x?.bytes === "function" ? x.bytes() : (x instanceof Uint8Array ? x : x?.bytes);
+        if (b instanceof Uint8Array || (b && typeof b.length === "number" && typeof b[0] === "number")) {
+          sym = Buffer.from(b).toString("ascii");
+        }
+      }
+    } catch { /* fail-closed: the row is skipped via sym=null */ }
+    try { value = callOrProp(row, "val"); } catch { value = null; }
+    return { sym, value };
+  });
+}
+
+function decodeMapStruct(v) {
+  const rows = safeMapEntries(v);
+  const byKey = {};
+  for (const r of rows) { if (r.sym && byKey[r.sym] === undefined) byKey[r.sym] = r.value; }
+  const keysSeen = rows.map((r) => r.sym || "<undecodable>");
+  if (!Object.prototype.hasOwnProperty.call(byKey, "hash") || !Object.prototype.hasOwnProperty.call(byKey, "owner") || !Object.prototype.hasOwnProperty.call(byKey, "seq")) {
+    return { kind: "UNDECODABLE", via: "map", keys: keysSeen };
+  }
+  const hashHex = bytes32Hex(byKey.hash);
+  const owner = addressStrkey(byKey.owner);
+  const seq = seqOf(byKey.seq);
+  if (!hashHex || !owner || seq === null) return { kind: "UNDECODABLE", via: "map", keys: keysSeen };
+  return { kind: "SOME", hashHex, owner, seq };
 }
 
 function decodeStruct(children) {
@@ -502,6 +622,122 @@ function finalizeVerdict(artifact) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Resume path: wire-only instance-address resolution                  */
+/* ------------------------------------------------------------------ */
+/* A deterministic-salt re-run refuses a fresh create pre-submission   */
+/* with HostError ExistingValue, so that run holds NO result meta of   */
+/* its own to parse. The resumed run must therefore discover the       */
+/* EXISTING instance address FROM THE WIRE, never from a local         */
+/* derivation: sha256(ContractIDPreimage) does not reproduce the host  */
+/* contract id (measured) and the known-answer vector id (owner+hash)  */
+/* is the IN-CONTRACT COMMIT id, not a contract address — conflating   */
+/* them sent the first rehearsal against a non-existing instance       */
+/* (HostError Storage/MissingValue).                                   */
+/* Resolution: walk this wallet's Horizon tx history (public key       */
+/* only — no secrets travel), read each tx's Soroban result meta from  */
+/* the RPC wire, and collect the contractData-instance entries that    */
+/* carry the pinned wasm sha256 as their executable. Identity is then  */
+/* re-proven by reading the LIVE instance entry back on the RPC wire.  */
+/* Fail-closed on ambiguity, absence or unreadable wire.               */
+
+export async function resolveExistingInstance({ net, publicKey, wasmSha256Hex, maxPages = 4 } = {}) {
+  const FAIL = (state, error) => ({ state, error, contractId: null });
+  if (!publicKey || !wasmSha256Hex) return FAIL("GATED", "publicKey + wasmSha256Hex required");
+  const infra = INFRA[net];
+  if (!infra || !infra.horizon || !infra.rpc) return FAIL("GATED", "network has no horizon/rpc wire");
+  try {
+    const seen = new Set();
+    let url = `${infra.horizon}/accounts/${encodeURIComponent(publicKey)}/transactions?limit=100&order=desc`;
+    let pages = 0;
+    while (url && pages < maxPages) {
+      pages += 1;
+      const res = await fetch(url, { headers: { accept: "application/json" } });
+      if (!res.ok) return FAIL("WIRE_ERROR", `horizon account txs HTTP ${res.status}`);
+      const page = await res.json();
+      const records = (((page || {})._embedded || {}).records) || [];
+      const matches = [];
+      for (const rec of records) {
+        const hash = rec && rec.hash;
+        if (!hash || seen.has(hash)) continue;
+        seen.add(hash);
+        if (rec.successful !== true) continue; // failed txs never created anything
+        // Read the tx meta from the RPC wire, never from Horizon (whose
+        // /transactions record omits result_meta_xdr — measured).
+        const metaRes = await fetch(infra.rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTransaction", params: { hash } }) });
+        if (!metaRes.ok) continue;
+        const metaBody = await metaRes.json().catch(() => null);
+        const metaB64 = metaBody && metaBody.result && metaBody.result.resultMetaXdr;
+        if (typeof metaB64 !== "string") continue;
+        let meta = null;
+        try { meta = xdr.TransactionMeta.fromXDR(metaB64, "base64"); } catch { continue; }
+        const arm = meta && meta.type && meta[meta.type];
+        const opsMeta = arm && arm.operations;
+        if (!opsMeta) continue;
+        for (const om of opsMeta) {
+          let changes = [];
+          try { changes = typeof om.changes === "function" ? om.changes() : om.changes || []; } catch { changes = []; }
+          for (const change of changes) {
+            const kind = String(change && change.type);
+            const entry = kind === "ledgerEntryCreated" ? change.created : kind === "ledgerEntryUpdated" ? change.updated : null;
+            const data = entry && entry.data;
+            if (!data || data.type !== "contractData") continue;
+            const cd = data.contractData;
+            if (!cd || !cd.key || cd.key.type !== "scvLedgerKeyContractInstance") continue;
+            const cidHolder = cd.contract && cd.contract.contractId;
+            const raw = cidHolder && (cidHolder.value !== undefined ? cidHolder.value : cidHolder);
+            const bytes = raw instanceof Uint8Array ? Buffer.from(raw) : Buffer.isBuffer(raw) ? raw : null;
+            if (!bytes || bytes.length !== 32) continue;
+            const instV = cd.val;
+            const instance = instV && (instV.instance || (instV.contractInstance && instV.contractInstance) );
+            const exec = instance && instance.executable;
+            const exHash = exec && exec.wasmHash && (exec.wasmHash.value !== undefined ? exec.wasmHash.value : exec.wasmHash);
+            const exHex = exHash && (exHash instanceof Uint8Array || Buffer.isBuffer(exHash)) ? Buffer.from(exHash).toString("hex") : null;
+            if (!exHex) continue;
+            if (exHex !== wasmSha256Hex) continue; // different material — never our instance
+            matches.push({ contractId: StrKey.encodeContract(bytes), execWasmHashHex: exHex, lastModifiedLedgerSeq: entry.lastModifiedLedgerSeq || null, txHash: hash });
+          }
+        }
+      }
+      if (matches.length > 1) return FAIL("AMBIGUOUS", `${matches.length} instance entries match this executable — refusing to guess`);
+      if (matches.length === 1) {
+        const m0 = matches[0];
+        // Second identity proof: read the LIVE instance entry back from the RPC wire.
+        let bytes = null;
+        try { const d = StrKey.decodeContract(m0.contractId); bytes = Buffer.from(d); } catch { bytes = null; }
+        if (!bytes || bytes.length !== 32) return FAIL("WIRE_ERROR", "resolved contractId undecodable");
+        const liveKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+          contract: xdr.ScAddress.scAddressTypeContract(new xdr.ContractId(bytes)),
+          key: xdr.ScVal.scvLedgerKeyContractInstance(),
+          durability: xdr.ContractDataDurability.persistent,
+        })).toXDR("base64");
+        const liveRes = await fetch(infra.rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getLedgerEntries", params: { keys: [liveKey] } }) });
+        if (!liveRes.ok) return FAIL("WIRE_ERROR", `getLedgerEntries HTTP ${liveRes.status}`);
+        const liveBody = await liveRes.json().catch(() => null);
+        const entries = liveBody && liveBody.result && Array.isArray(liveBody.result.entries) ? liveBody.result.entries : [];
+        let liveExecHex = null;
+        let liveLast = null;
+        for (const ent of entries) {
+          try {
+            const row = xdr.LedgerEntryData.fromXDR(ent.xdr || ent.data, "base64");
+            const rowCd = row.contractData;
+            const rowInst = rowCd.val && (rowCd.val.instance || rowCd.val.contractInstance);
+            const rowEx = rowInst && rowInst.executable && rowInst.executable.wasmHash && rowInst.executable.wasmHash.value;
+            if (rowEx) { liveExecHex = Buffer.from(rowEx).toString("hex"); liveLast = ent.lastModifiedLedgerSeq || null; }
+          } catch { /* fallthrough */ }
+        }
+        if (liveExecHex !== wasmSha256Hex) return FAIL("WIRE_ERROR", `instance ${m0.contractId} not live with this executable (row exec ${liveExecHex || "undecodable"})`);
+        return { state: "RESOLVED", contractId: m0.contractId, execWasmHashHex: liveExecHex, lastModifiedLedgerSeq: liveLast || m0.lastModifiedLedgerSeq, source: `horizon-account-txs + rpc meta ${m0.txHash.slice(0, 12)}…` };
+      }
+      const link = (page || {})._links;
+      url = link && link.next && link.next.href ? link.next.href : null;
+    }
+    return FAIL("NOT_FOUND", `no successful tx of ${publicKey} created an instance with executable ${wasmSha256Hex.slice(0, 12)}… within ${maxPages} page(s)`);
+  } catch (e) {
+    return FAIL("WIRE_ERROR", (e && e.message) || String(e));
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Rehearsal (testnet only, --rehearse)                                */
 /* ------------------------------------------------------------------ */
 
@@ -520,6 +756,100 @@ async function refusalProbe(rpcServer, built, probeName) {
   return { probe: probeName, state: "NOT_REFUSED", ok: false, error: "a probe that must refuse DID NOT refuse — fail-closed violation", submitted: false };
 }
 
+/**
+ * SDK 17.4 simulateTransaction returns the PARSED face — measured live keys
+ * `_parsed, id, latestLedger, events, transactionData, minResourceFee, result,
+ * stateChanges` — where `result` is the SINGULAR SimulateHostFunctionResult
+ * `{ auth, retval }` (api.d.ts 476/486; parsers.js coalesces the raw plural
+ * `results: RawSimulateHostFunctionResult[] { auth?: string[], xdr }` into it).
+ * The runner read `sim.results[0].retval`, which EXISTS on no live face, so
+ * every singular Parsed retval read null and the readback/idempotency
+ * invariants collapsed to UNDECODABLE/NOT_IDEMPOTENT (measured 2026-11-08).
+ * Fail-closed: the raw face is still honored as a fallback; neither face
+ * may silently decode to nothing.
+ */
+function simResultFace(sim) {
+  if (!sim || typeof sim !== "object") return null;
+  if (sim.result && sim.result.retval !== undefined && sim.result.retval !== null) {
+    return { face: "parsed", retval: sim.result.retval, auth: Array.isArray(sim.result.auth) ? sim.result.auth : [] };
+  }
+  if (Array.isArray(sim.results) && sim.results.length > 0) {
+    const row = sim.results[0];
+    // Raw face retval is the base64 XDR STRING (decoder accepts it directly).
+    return { face: "raw", retval: row.xdr !== undefined && row.xdr !== null ? row.xdr : row.retval ?? null, auth: Array.isArray(row.auth) ? row.auth : [] };
+  }
+  return null;
+}
+
+/**
+ * SIMULATION-ONLY wrong-owner probe with the measured honest refusal shape:
+ * Soroban simulation auto-grants require_auth (record mode executes as if
+ * authorized), so "the sim must throw" is FALSE on the wire. The sim-only
+ * refusal proof is instead WHERE the recorded auth binds: commit_authorized
+ * calls require_auth on the OWNER argument, so the recorded credential is an
+ * ADDRESS credential naming the OWNER — regardless of who the tx source is.
+ * The attacker cannot produce that signature at submission (txBadAuth), so the
+ * attack is refused without submitting anything.
+ * Fail-closed: REFUSED ONLY IF at least one auth entry is recorded AND every
+ * entry is an ACCOUNT credential naming the OWNER; any source-account-style,
+ * attacker-named, contract-named or undecodable entry or an empty auth list is
+ * NOT_REFUSED.
+ */
+async function authBindingProbe(rpcServer, built, probeName, ownerPubkey, attackerPubkey) {
+  if (!built || built.state !== "BUILD_OK") {
+    return { probe: probeName, state: "BUILD_GATED", ok: false, error: built && built.error ? built.error : "no build returned" };
+  }
+  let sim;
+  try { sim = await rpcServer.simulateTransaction(built.tx); }
+  catch (e) { return { probe: probeName, state: "REFUSED", ok: true, error: `simulation threw: ${e && e.message}`, submitted: false }; }
+  if (sim && sim.error) {
+    const shapeOk = /Auth|Contract/.test(sim.error);
+    return { probe: probeName, state: "REFUSED", ok: shapeOk, shapeOk, error: sim.error, submitted: false };
+  }
+  const face = simResultFace(sim);
+  if (!face || !Array.isArray(face.auth) || face.auth.length === 0) {
+    return { probe: probeName, state: "NOT_REFUSED", ok: false, submitted: false, authEntries: [],
+      error: "sim succeeded with NO recorded auth entries — nothing binds the operation to the owner, so no refusal is proven" };
+  }
+  const detailOf = (entry) => {
+    let e = entry;
+    try {
+      if (typeof e === "string") e = xdr.SorobanAuthorizationEntry.fromXDR(e, "base64");
+    } catch (err) { return { kind: "UNDECODABLE", error: err && err.message }; }
+    try {
+      // Own props shadow prototype accessor methods on this SDK's per-arm
+      // classes (measured: "e.credentials is not a function") — callOrProp.
+      const cred = callOrProp(e, "credentials");
+      if (cred === null || cred === undefined) return { kind: "UNDECODABLE", error: "no credentials" };
+      const credArm = armOf(cred);
+      if (credArm === "sorobanCredentialsSourceAccount") return { kind: "SOURCE_ACCOUNT" };
+      if (credArm !== "sorobanCredentialsAddress" && credArm !== "sorobanCredentialsAddressV2") return { kind: `OTHER:${credArm}` };
+      // V2 wraps the address in addressV2; V1 keeps it on the credential itself.
+      const container = credArm === "sorobanCredentialsAddressV2" ? callOrProp(cred, "addressV2") : cred;
+      const addr = callOrProp(container, "address");
+      if (addr === null || addr === undefined) return { kind: "UNDECODABLE", error: "no address" };
+      const addrArm = armOf(addr);
+      if (addrArm === "scAddressTypeAccount") return { kind: "ACCOUNT", strkey: Address.fromScAddress(addr).toString() };
+      if (addrArm === "scAddressTypeContract") return { kind: "CONTRACT" };
+      return { kind: `OTHER:${addrArm}` };
+    } catch (err) { return { kind: "UNDECODABLE", error: err && err.message }; }
+  };
+  const authEntries = face.auth.map(detailOf);
+  // Empty strkey (undefined) can never equal ownerPubkey, so Other/undecodable
+  // shapes fail-closed through the same every() below without a special case.
+  const refused = authEntries.length > 0 && authEntries.every((d) => d.kind === "ACCOUNT" && d.strkey === ownerPubkey);
+  return {
+    probe: probeName,
+    state: refused ? "REFUSED" : "NOT_REFUSED",
+    ok: refused,
+    submitted: false,
+    authEntries,
+    criterion: "sim-only: require_auth recorded against the OWNER address only — the tx source cannot satisfy that credential (txBadAuth at submission); nothing was submitted",
+    ...(refused ? { note: `auth bound to the owner (${ownerPubkey.slice(0, 8)}…), source is the attacker (${attackerPubkey.slice(0, 8)}…)` }
+                : { error: "recorded auth is not bound to the owner only — fail-closed violation" }),
+  };
+}
+
 /** read_authorized simulation in one call (read-only; no sign/submit). */
 async function readbackSim(rpcServer, net, contractId, publicKey, fee, sequence, readTargetId) {
   if (!contractId) return { fn: "read_authorized", state: "SKIPPED", reason: "no contract id available" };
@@ -533,11 +863,12 @@ async function readbackSim(rpcServer, net, contractId, publicKey, fee, sequence,
   try { sim = await rpcServer.simulateTransaction(built.tx); }
   catch (e) { return { fn: "read_authorized", state: "SIM_ERROR", submitted: false, error: e && e.message }; }
   if (sim && sim.error) return { fn: "read_authorized", state: "SIM_ERROR", submitted: false, error: sim.error };
-  const dec = decodeAuthorizedAnchorScVal(sim && sim.results && sim.results[0] ? sim.results[0].retval : null);
+  const face = simResultFace(sim);
+  const dec = decodeAuthorizedAnchorScVal(face ? face.retval : null);
   return {
     fn: "read_authorized", state: dec.kind === "NONE" ? "SIMULATED_NONE" : dec.kind === "SOME" ? "SIMULATED_SOME" : "UNDECODABLE",
-    submitted: false, readTargetId,
-    decoded: dec.kind === "SOME" ? { hashHex: dec.hashHex, owner: dec.owner, seq: dec.seq } : dec,
+    submitted: false, readTargetId, simFace: face ? face.face : "none",
+    decoded: dec.kind === "SOME" ? { kind: "SOME", hashHex: dec.hashHex, owner: dec.owner, seq: dec.seq } : dec,
   };
 }
 
@@ -559,36 +890,40 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
     sequence: String(seqCounter.value), commitmentHash: KNOWN_VECTOR.hash,
     owner: publicKey, network: net, fee, ownerAuthorization: false,
   });
-  if (commit1.state !== "BUILD_OK") throw new Fail(`commit build gated: ${commit1.error}`);
+  if (commit1.state !== "BUILD_OK") throw new Fail(`commit build gated: ${commit1.error}`, []);
   seqCounter.value += 1n;
   steps.push(await sendAndPoll(rpcServer, net, commit1.tx, keypair, "commit_authorized(vector)"));
-  if (steps[steps.length - 1].state !== "INVOKED") throw new Fail("owner commit_authorized did not reach INVOKED");
+  if (steps[steps.length - 1].state !== "INVOKED") {
+    const s0 = steps[steps.length - 1];
+    throw new Fail(`owner commit_authorized did not reach INVOKED (state: ${s0.state}; diagnostic: ${s0.error || s0.horizonRaw ? JSON.stringify({ state: s0.state, error: s0.error || null, horizon: s0.horizonRaw || null, txHash: s0.hash || null }) : "none"})`, steps);
+  }
   // (2) Idempotent replay — same (owner, hash) returns the SAME ledger seq.
+  // Simulations consume NO on-chain sequence: only a LANDED tx advances seqCounter
+  // (bumping on sims built commit2 one slot ahead of the chain — the same
+  // txBAD_SEQ (-5) class as the create-resume release above).
   const rb1 = await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id);
-  seqCounter.value += 1n;
   const seqA = (rb1.decoded && rb1.decoded.seq) || null;
+  steps.push({ step: "readback(after-commit1)", ...rb1 });
   const commit2 = buildInvokeTx({
     contractId: cstr, functionName: "commit_authorized", source: publicKey,
     sequence: String(seqCounter.value), commitmentHash: KNOWN_VECTOR.hash,
     owner: publicKey, network: net, fee, ownerAuthorization: false,
   });
-  if (commit2.state !== "BUILD_OK") throw new Fail(`replay build gated: ${commit2.error}`);
+  if (commit2.state !== "BUILD_OK") throw new Fail(`replay build gated: ${commit2.error}`, steps);
   seqCounter.value += 1n;
   steps.push(await sendAndPoll(rpcServer, net, commit2.tx, keypair, "commit_authorized(replay)"));
   const rb2 = await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id);
-  seqCounter.value += 1n;
   const seqB = (rb2.decoded && rb2.decoded.seq) || null;
   steps.push({
     step: "commit_authorized(replay):idempotent",
     state: seqA !== null && seqA === seqB ? "IDEMPOTENT" : "NOT_IDEMPOTENT",
     ok: seqA !== null && seqA === seqB, ledgerSeq: seqB,
   });
-  steps.push({ step: "readback(after-replay)", ...(await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id)) });
-  seqCounter.value += 1n;
+  steps.push({ step: "readback(after-replay)", ...rb2 });
   // (3) Wrong-owner probe: EPHEMERAL testnet-only key, never for mainnet.
   const attacker = Keypair.random();
   const attackerFund = await friendbotFund("testnet", attacker.publicKey());
-  const attackerProbe = await refusalProbe(
+  const attackerProbe = await authBindingProbe(
     rpcServer,
     buildInvokeTx({
       contractId: cstr, functionName: "commit_authorized", source: attacker.publicKey(),
@@ -596,6 +931,8 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
       network: net, fee, ownerAuthorization: false,
     }),
     "commit_authorized(wrong-owner)",
+    publicKey,
+    attacker.publicKey(),
   );
   steps.push({ step: "probe:commit_authorized(wrong-owner)", ...attackerProbe, fundState: attackerFund.state, ephemeralKeySubmission: false });
   // (4) Mismatch probe: correct id + wrong hash -> the contract must refuse.
@@ -742,10 +1079,18 @@ export async function main(argv) {
   } catch (e) {
     // Deterministic salt: an earlier attempt already created this exact instance (same deployer+salt+wasm).
     // Soroban refuses a fresh create with the same salt (HostError Storage/ExistingValue: "contract already
-    // exists") while the prior attempt already reached INVOKED — resume from the derived contract id
-    // (deterministic from deployer+wasm), never resubmit blindly.
+    // exists") while the prior attempt already reached INVOKED — this run has no result meta of its
+    // own; the resume path below resolves the REAL instance address from the wire. Never resubmit blindly.
     if (/already exists|ExistingValue/i.test(String((e && e.message) || e))) {
-      console.log(`createCustomContract: prior attempt already created this deterministic instance — resuming from the derived contract id (no re-submit)`);
+      // The ExistingValue throw surfaces from prepareTransaction's SIMULATION, which runs BEFORE
+      // sendTransaction — the tx never reached the wire, so it never landed and its reserved
+      // sequence slot is released here. Without this release every later build runs one slot
+      // ahead of the chain and dies at the RPC gate with txBAD_SEQ (result code -5, measured
+      // 2026-11-08 on the rehearsal's first commit: feeCharged 40674, errorResultXdr
+      // AAAAAAAAnuL////7AAAAAA==). Only a never-sent tx may release: an on-chain FAILED tx
+      // DID consume its slot, which is why sendAndPoll's FAILED branch keeps it.
+      if (seqCounter && typeof seqCounter.value === "bigint") seqCounter.value -= 1n;
+      console.log(`createCustomContract: prior attempt already created this deterministic instance — simulation refused pre-submit, sequence slot released; the exact address will be resolved from the wire (never resubmitted)`);
       crRes = { step: "createCustomContract", state: "INVOKED", resumedAfterExisting: true, error: String((e && e.message) || e) };
     } else { throw e; }
   }
@@ -759,8 +1104,21 @@ export async function main(argv) {
   if (crRes.state !== "INVOKED") { return saveFail(artifact, 5); }
   let contractId;
   if (crRes.resumedAfterExisting) {
-    const derived = deriveAuthorizedAnchorId({ owner: publicKey, hash: KNOWN_VECTOR.hash });
-    contractId = derived.state === "DERIVED" ? derived.id : null;
+    // Wire-only resolution — see "Resume path" preamble above. The known-answer
+    // vector id (owner+hash) is the IN-CONTRACT commit id (used later as the
+    // rehearsal read target), never a contract address; the instance address is
+    // a fact that must come from the ledger, so it is resolved + live-proven
+    // here or the run fails closed.
+    const resolved = await resolveExistingInstance({ net, publicKey, wasmSha256Hex: wasmSha256 });
+    if (resolved.state !== "RESOLVED" || !resolved.contractId) {
+      crRes.resumptionFailed = { state: resolved.state, error: resolved.error || null };
+      console.error(`resume resolution FAILED (${resolved.state}): ${resolved.error || "(no detail)"}`);
+      artifact.summary.verdict = `NOT_CONFIRMED — resume could not prove the existing instance on the wire (${resolved.state})`;
+      return saveFail(artifact, 5);
+    }
+    contractId = resolved.contractId;
+    crRes.resumedFrom = { contractId, execWasmHashHex: resolved.execWasmHashHex, lastModifiedLedgerSeq: resolved.lastModifiedLedgerSeq, source: resolved.source };
+    console.log(`resolveExistingInstance: RESOLVED ${contractId} (exec ${resolved.execWasmHashHex.slice(0, 12)}…, source ${resolved.source})`);
   } else {
     const parsed = parseContractIdFromCreateResult(crRes.metaB64);
     if (parsed.state !== "READ_OK") {
@@ -784,6 +1142,7 @@ export async function main(argv) {
     }
     try { artifact.rehearsal = await runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fee, seqCounter }); }
     catch (e) {
+      if (e && Array.isArray(e.steps)) for (const s of e.steps) artifact.steps.push(s); // partial steps preserved — diagnostics never dropped
       artifact.steps.push({ step: "rehearsal", state: "FAILED", ok: false, error: (e && e.message) || "rehearsal failure" });
       return saveFail(artifact, 5);
     }

@@ -19,7 +19,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { xdr } from "@stellar/stellar-sdk";
+import { xdr, Address, StrKey } from "@stellar/stellar-sdk";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -158,6 +158,26 @@ test("readback decoder: Option None (scvBool false); undecodable inputs stay fai
   assert.equal(deploy.decodeAuthorizedAnchorScVal("not-an-scval").kind, "UNDECODABLE");
   const d = deploy.decodeAuthorizedAnchorScVal(xdr.ScVal.scvU32(7));
   assert.notEqual(d.kind, "SOME", "a non-vec arm can never fabricate a SOME record");
+});
+
+test("readback decoder: the typed-sim scvMap face (soroban-testnet measured 2026-11-08) decodes SOME", () => {
+  // Measured live truth: the typed fill the host serializes the AuthorizedAnchor
+  // structured return as an scvMap keyed "hash"/"owner"/"seq" through per-arm
+  // own-prop classes that carry NO switch() — the 3-field vec face comes only
+  // from event payloads. This vector replays that exact shape offline through
+  // the same builders as the wire face (roundtrip on fromXDR base64 included),
+  // so the decoder can never silently regress to the vec face alone.
+  const hashHex = "ab".repeat(32);
+  const owner = StrKey.encodeEd25519PublicKey(Buffer.alloc(32, 0x0f));
+  const map = xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("hash"), val: xdr.ScVal.scvBytes(Buffer.from(hashHex, "hex")) }),
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("owner"), val: new Address(owner).toScVal() }),
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("seq"), val: xdr.ScVal.scvU32(5643172) }),
+  ]);
+  assert.deepEqual(deploy.decodeAuthorizedAnchorScVal(map), { kind: "SOME", hashHex, owner, seq: 5643172 });
+  assert.deepEqual(deploy.decodeAuthorizedAnchorScVal(map.toXDR("base64")), { kind: "SOME", hashHex, owner, seq: 5643172 }, "the fromXDR base64 roundtrip stays on the same typed face");
+  const partial = xdr.ScVal.scvMap([new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("hash"), val: xdr.ScVal.scvBytes(Buffer.from(hashHex, "hex")) })]);
+  assert.equal(deploy.decodeAuthorizedAnchorScVal(partial).kind, "UNDECODABLE", "a map missing any of the three fields stays fail-closed");
 });
 
 function makeStrkey(prefix) {
