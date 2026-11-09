@@ -43,6 +43,12 @@ Portals usually want: a one-liner, a description, status, which networks are liv
 | evidence | `src/content/pi.ts`, `docs/PI-*`, `submission/pi/*`, `docs/PI-DEVELOPER-PORTAL-READY.md` |
 | claim ceiling | see above; no Pi Network claims except hackathon event (confirmed, prize pool confirmed) and Core/Stellar proofs (live + verified) |
 | contact | `/contact`, `/partnerships`, GitHub `coreguard-global/CoreGuard` |
+| description (139 chars incl. spaces) | Execution truth for Pi Network — precomputed, replayable; fail-closed until Pi mainnet opens for third-party. |
+| subtitle (29 chars incl. spaces) | Pi Execution Trust — fail-closed, prepared for mainnet. |
+| privacy policy URL | https://coreguard-trust-and-defense.lovable.app/privacy |
+| terms of service URL | https://coreguard-trust-and-defense.lovable.app/terms |
+| Pi Sign-In domain verification | `validation-key.txt` served at the site root: https://coreguard-trust-and-defense.lovable.app/validation-key.txt |
+| Pi Sign-In OAuth client ID | implicit flow only (`client_id`); no client secret is stored in the project |
 
 ## How to copy without breaking claims
 
@@ -61,13 +67,15 @@ Portals usually want: a one-liner, a description, status, which networks are liv
 - [ ] Claim ceiling explicitly stated (no revenue/customers/partners/funding/audits for Pi Network)
 - [ ] Evidence links included (repo files, not screenshots of unverified claims)
 - [ ] Contact path included
+- [ ] Privacy policy URL and terms of service URL filled (`/privacy`, `/terms`)
+- [ ] Pi Sign-In domain verified through `/validation-key.txt` before production use
 - [ ] Language: bilingual EN/AR where the portal supports it
 - [ ] Status pill: DRY_RUN / PLAN_ONLY on Pi Network page (already live on the website)
 
 ## Repo pointers
 
 - Public: `https://github.com/coreguard-global/CoreGuard`
-- Private website: `https://github.com/coreguard-global/WEB-coreguard` (page `/networks/pi-network`)
+- Private website: `https://github.com/EslaM-X/WEB-coreguard` (page `/networks/pi-network`; legal pages `/privacy` and `/terms`; domain key `/validation-key.txt`)
 - Pages (docs): `https://coreguard-global.github.io/CoreGuard/` (source: `main` branch, `/docs` folder)
 - Live Core DAO + Stellar proof artifacts: `LINKS` + `PROOF` in `src/content/coreguard.ts`; evidence files in `docs/evidence/`
 
