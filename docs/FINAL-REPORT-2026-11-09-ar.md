@@ -1,4 +1,4 @@
-# التقرير النهائي — دورة توصيل طبقة الإثبات المُصرَّفة (CoreGuard Authorized-Lane) — 2026-11-09
+# التقرير النهائي — إغلاق مرحلة توصيل طبقة الإثبات المُصرَّفة (CoreGuard Authorized-Lane): التجربة ناجحة، البوابة على الشبكة الرئيسية رفضت
 
 **الوضع النهائي:** أُغلقت دورة توصيل طبقة الإثبات المُصرَّفة (Authorized-Lane) على مخرجاتها الأخيرة، وعُزّزت بالتحقق الكامل من كل سلطة التحقق، وجاءت النتيجة كاملة: اجتياز التجربة على الشبكة الاختبارية وتمرّر البوابة على قيد المسؤولية.
 
@@ -34,7 +34,7 @@
 
 ---
 
-# Final Report — CoreGuard Authorized-Lane Delivery Cycle — 2026-11-09
+# Final Report — Closing the Authorized-Lane Delivery: Rehearsal Passed, Mainnet Gate Refused
 
 **Final status:** the authorized-lane delivery cycle closes at commit `a6f30766b2365dd2f45beca8557261d9d9fe6622` — the testnet rehearsal passed end-to-end and the mainnet gate correctly refused at the balance floor; the full suite is green at **1468 / 1468**.
 
