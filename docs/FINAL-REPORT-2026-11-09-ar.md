@@ -6,7 +6,7 @@
 
 1. **المرحلة الثانية — اجتياز التجربة على الشبكة الاختبارية:** اجتاز المالك مسار الطبقة المُصرَّفة (`--rehearse`): رفع المكوّن INVOKED، إنشاء العقد INVOKED، `commit_authorized` INVOKED، القراءة SIMULATED_SOME، الإعادة INVOKED (IDEMPOTENT)، الرفض عند المُصرَّف الخاطئ REFUSED، ومقاومة التعديل REFUSED. سجّلت الأداة `docs/evidence/stellar-soroban-authorized-deploy-testnet.json` نتيجة `summary.deployed = false`، وركّزت `laneWrites` على `REHEARSED_ON_TESTNET`، وكلّ invariant ok.
 
-2. **المرحلة الثالثة — البوابة على الشبكة الرئيسية (fail-closed):** أُجري التشغيل `node scripts/stellar-soroban-authorized-deploy.mjs --network mainnet --owner-authorized ... --fee 1000000` فرفضت البوابة (exit 7) عند فحص الرصيد: 1.5069800 XLM للمالك أقل من الحد الأدنى المطلوب 2 XLM. لم يُرسَل أي إرسال؛ والبنية القائمة على الفشل كُتبتت.
+2. **المرحلة الثالثة — التشغيل على الشبكة الرئيسية (full owner authorization — final execution):** أعاد التشغيل بعد اجتياز الرصيد (3.5069800 XLM ≥ 2 XLM) → **رفضت step الرفع `upload(wasm)`** → **exit 5**. لم يُنفَّذ النشر (لم تُحاول create؛ contractId = null؛ deployed = false). لم يُرسَل أي إرسال؛ والبنية القائمة على الفشل كُتبتت.
 
 ## الحالة القياسية النهائية (على شجرة الـ HEAD الأخير)
 
@@ -25,8 +25,8 @@
 
 ## الحدود المتبقية
 
-- لم يُبنَ النشر على الشبكة الرئيسية (المرحلة الثالثة رفضت على قيد الرصيد).
-- يلزم تمويل المالك ≥ 2 XLM (1.5069800 XLM حاليًا) لإعادة فتح البوابة.
+- لم يُبنَ النشر على الشبكة الرئيسية (المرحلة الثالثة رفضت عند step الرفع — exit 5).
+- يلزم تمويل المالك ≥ 2 XLM (3.5069800 XLM حاليًا) لإعادة فتح البوابة.
 
 ## ملاحظة الهبوط (as-landed honesty note)
 
@@ -61,7 +61,7 @@
 ## Unclosed owner-gated boundaries
 
 - No mainnet signing, broadcast, or new deployment without owner decision (Phase 3 refused at the balance floor — a gate, not a bypass).
-- The owner wallet (GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U) held 1.5069800 XLM; the mainnet deploy gate requires >= 2 XLM. Fund to >= 2 XLM, then re-run Phase 3.
+- The owner wallet (GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U) held 1.5069800 XLM at the first preflight and 3.5069800 XLM at the final execution; the mainnet deploy gate requires >= 2 XLM. The final run passed the balance leg and the deploy itself was refused at the `upload(wasm)` step (exit 5).
 
 ## As-landed honesty note
 

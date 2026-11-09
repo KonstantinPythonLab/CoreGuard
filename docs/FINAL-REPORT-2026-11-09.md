@@ -6,7 +6,7 @@
 
 1. **Phase 2 — Testnet rehearsal PASSED:** the owner-authorized lane was exercised on testnet (`--rehearse`): upload INVOKED, createCustomContract INVOKED, `commit_authorized` INVOKED, readback SIMULATED_SOME, replay INVOKED (IDEMPOTENT), wrong-owner REFUSED, hash-mismatch REFUSED. The artifact `docs/evidence/stellar-soroban-authorized-deploy-testnet.json` recorded `summary.deployed = false`; laneWrites `REHEARSED_ON_TESTNET`; invariants all ok; idempotency ledgerSeq 5643172.
 
-2. **Phase 3 — Mainnet fail-closed:** `node scripts/stellar-soroban-authorized-deploy.mjs --network mainnet --owner-authorized --wasm-path .tmp-artifact/cg_commitment_anchor.wasm --wasm-manifest docs/evidence/stellar-soroban-wasm-manifest-42519059778.json --fee 1000000` → **BALANCE PREFLIGHT FAILED (read-only): native 1.5069800 XLM for GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U — requires >= 2 XLM** → **exit 7**. No transaction was submitted; nothing was broadcast; the fail-closed posture held.
+2. **Phase 3 — Mainnet run under full owner authorization (final execution):** the gate command was re-run after the funded balance passed the preflight (native **3.5069800 XLM** ≥ 2 XLM) → the `upload(wasm)` step was **REJECTED** (`errorResultXdr` `AAAAAAfMyDb////5AAAAAA==`, resultCode null) → **exit 5**. The deploy did not land (no create was attempted; `contractId` null; `summary.deployed = false`). No transaction was broadcast; the fail-closed posture held.
 
 ## Measured final state (commit `a6f3076`)
 
@@ -25,7 +25,7 @@
 ## Unclosed owner-gated boundaries
 
 - No mainnet signing, broadcast, or new deployment without owner decision (Phase 3 refused at the balance floor — a gate, not a bypass).
-- The owner wallet (GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U) held 1.5069800 XLM; the mainnet deploy gate requires >= 2 XLM. Fund to >= 2 XLM, then re-run Phase 3.
+- The owner wallet (GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U) held 1.5069800 XLM at the first preflight and 3.5069800 XLM at the final execution; the mainnet deploy gate requires >= 2 XLM. The final run passed the balance leg and the deploy itself was refused at the `upload(wasm)` step (exit 5).
 
 ## As-landed honesty note
 
