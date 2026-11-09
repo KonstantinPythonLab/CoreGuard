@@ -15,42 +15,70 @@ export const PI = {
   },
   pitch: {
     en: "Pi Network is moving toward mainnet and an open developer ecosystem. CoreGuard provides a deterministic, replayable proof of what was authorised versus what executed — fail-closed, before the transaction settles — the same pattern already proven on Core DAO and Stellar.",
-    ar: "Pi Network يتحرّك نحو الشبكة الرئيسية ومنظومة مفتوحة للمطورين. CoreGuard بيقدم إثبات deterministic, قابل لإعادة التحقق، لما أُصرّح contrasting لما نُفّذ — فشل آمن، قبل ما تتسوّى المعاملة — نفس النمط اللي نُجِد على Core DAO وStellar.",
+    ar: "Pi Network يتحرّك نحو الشبكة الرئيسية ومنظومة مفتوحة للمطورين. CoreGuard بيقدم إثبات deterministic, قابل لإعادة التحقق، لما أُصرّح مقابل ما نُفّذ — فشل آمن، قبل ما تتسوّى المعاملة — نفس النمط اللي نُجِد على Core DAO وStellar.",
   },
   offers: [
     {
-      title: { en: "Pi Browser verification overlay", ar: " Overlay verify على Pi Browser" },
+      title: { en: "Pi Commerce Shield", ar: "درع Pi Commerce" },
       body: {
-        en: "Every Pi DApp transaction runs through CoreGuard and shows the user a one-line receipt summary before sign-off: authorisation recovered · policy satisfied · receipt ready · anchored once Pi mainnet is live.UNKNOWN stays HELD.",
-        ar: "كل معاملة Pi DApp تجري عبر CoreGuard وتظهر للمستخدم ملخص إيصال قبل التوقيع: استُ restores الموقّع · السياسة محقّقة · الإيصال جاهز · يُثبت عندما تفتح Pi mainnet.UNKNOWN يبقى HOLD.",
+        en: "Reserve-before-sign escrow + receipts for Pi merchant payments (packages/pi-network).",
+        ar: "ضمان reserve-before-sign وإيصالات لمدفوعات تجار Pi (packages/pi-network).",
       },
     },
     {
-      title: { en: "Pi Wallet pre-sign check", ar: "فحص ما قبل التوقيع على Pi Wallet" },
+      title: { en: "Pi Wallet & Browser DApp guard", ar: "حماية Pi Wallet وتطبيقات المتصفح" },
       body: {
-        en: "Pi Wallet adds a pre-sign verification step: ALLOW / DENY / HOLD with a verifiable receipt, so the wallet never signs a transaction it cannot explain to the user.",
-        ar: "Pi Wallet بيضيف خطوة فحص قبل التوقيع: ALLOW / DENY / HOLD مع إيصال قابل للتحقق، عشان المحفظة ما تغيّر المعاملة ما فهمته للمستخدم.",
+        en: "Firewall policies before a Pi Browser DApp asks the wallet to sign.",
+        ar: "سياسات Firewall قبل ما أي تطبيق في Pi Browser يطلب توقيع من المحفظة.",
       },
     },
     {
-      title: { en: "Pi DApp SDK", ar: "SDK لتطبيقات Pi DApp" },
+      title: { en: "Verified merchant badge", ar: "شارة التاجر الموثّق" },
       body: {
-        en: "Pi DApps call the same verifier as Core DAO and Stellar. Each DApp presents a receipt to the user, keeps it for audit and hands it to a dispute flow when needed.",
-        ar: "تطبيقات Pi DApp بتدور نفس المحقّق اللي على Core DAO وStellar. كل DApp تظهر إيصال للمستخدم، يحتفظ بيه للتدقيق وبيديه لسياق نزاع لما لازم.",
+        en: "Badge Shield for Pi stores — renders only from verified receipts, fails closed otherwise.",
+        ar: "Badge Shield لمتاجر Pi — بتظهر بس من إيصالات متحققة، وغير كده بتقفل.",
       },
     },
     {
-      title: { en: "Pi mainnet commitment anchor (prepared)", ar: "مرساة التزام Pi mainnet (مستعدة)" },
+      title: { en: "Execution-truth layer (prepared)", ar: "طبقة حقيقة التنفيذ (مستعدة)" },
       body: {
-        en: "Once Pi mainnet is live, an on-chain commitment anchor stores execution receipts so anyone can replay them on Pi mainnet. The anchor pattern is prepared; nothing is claimed until Pi mainnet is live.",
-        ar: "بعد ما تفتح Pi mainnet، مرساة التزام على السلسلة بتخزن إيصالات التنفيذ عشان أي حد يعيدها على Pi mainnet. نمط المرساة مستعد؛ ما في مدّعى حتى تفتح Pi mainnet.",
+        en: "7-run verification ladder from intent → policy → commitment → receipt → verifier → anchor. Same Core/Stellar pattern prepared for Pi mainnet. No Pi mainnet TX verified yet.",
+        ar: "سلم تحقق من 7 درجات: النية ← السياسة ← الالتزام ← الإيصال ← المُحقّق ← المرساة. نفس نمط Core و Stellar مستعد لـ Pi mainnet. لسه ما في أي Till आदेश Pi متحققة.",
       },
     },
     {
-      title: { en: "Pi ecosystem attestation service", ar: "خدمة شهادة تنفيذ لمنظومة Pi" },
+      title: { en: "Pi Browser verification overlay (prototype)", ar: "لوحة التحقق في Pi Browser (نموذج أولي)" },
       body: {
-        en: "Pi ecosystem services (oracles, data services, escrow, agent platforms) issue execution attestations for the transactions they process, giving users and auditors a verifiable record.",
-        ar: "خدمات منظومة Pi (oracles, خدمات بيانات, حفظ, منصات وكلاء) بتصدر شهادات تنفيذ للمعاملات اللي بتعالجها، عشان المستخدمين والمدققين ي 제공받아ون سجل قابل للتحقق.",
+        en: "Prototype overlay that surfaces CoreGuard verification state next to every Pi Browser DApp action.",
+        ar: "واجهة نموذجية تظهر حالة التحقق من CoreGuard جنب كل عملية في أي تطبيق Pi Browser.",
+      },
+    },
+    {
+      title: { en: "Pi mainnet commitment anchor (prepared)", ar: "مرساة الالتزام لـ Pi mainnet (مستعدة)" },
+      body: {
+        en: "Commitment anchor prepared for Pi mainnet launch — ready to anchor receipts on-chain when Pi opens for third-party integration.",
+        ar: "مرساة التزام مستعدة لإطلاق Pi mainnet — جاهزة لتثبيت الإيصالات على السلسلة when Pi تفتح لدمج الأطراف الخارجية.",
+      },
+    },
+    {
+      title: { en: "Attestation service (planned)", ar: "خدمة التوثيق (مخطط لها)" },
+      body: {
+        en: "B2B attestation for Pi merchants, wallet operators and DApp publishers — signed, replayable, fail-closed.",
+        ar: "توثيق بين المؤسسات لتجّار Pi ومشغّلي المحافظ وناشري التطبيقات — موقّع، قابل لإعادة التشغيل، وآمن عند الشك.",
+      },
+    },
+    {
+      title: { en: "Cross-network anchor (Core + Stellar + Pi)", ar: "مرساة بين الشبكات (Core + Stellar + Pi)" },
+      body: {
+        en: "CoreGuard's cross-network anchor pattern proven on Core (chain 1116) and Stellar (Soroban); Pi mainnet anchor prepared.",
+        ar: "نمط المرساة بين الشبكات اتثبت على Core (chain 1116) و Stellar (Soroban)؛ ومرساة Pi mainnet مستعدة.",
+      },
+    },
+    {
+      title: { en: "Pi ecosystem attestation network (planned)", ar: "شبكة التوثيق لمنظومة Pi (مخطط لها)" },
+      body: {
+        en: "Pi ecosystem services (oracles, data services, escrow, agent platforms) issue execution attestations, giving users and auditors a verifiable record.",
+        ar: "خدمات منظومة Pi (oracles, خدمات بيانات, حفظ, منصات وكلاء) بتصدر شهادات تنفيذ, عشان المستخدمين والمدققين ي 제공받아ون سجل قابل للتحقق.",
       },
     },
   ],
@@ -85,7 +113,7 @@ export const PI_KILLER_FEATURES = [
     title: { en: "Pi mainnet commitment anchor (prepared for mainnet launch)", ar: "مرساة التزام Pi mainnet (مستعدة لإطلاق الشبكة الرئيسية)" },
     body: {
       en: "Same pattern already proven on Core DAO and Stellar: an on-chain commitment anchor stores execution receipts so anyone can replay them. Prepared for Pi mainnet; nothing is claimed until Pi mainnet is live.",
-      ar: "نفس النمط اللي نُجِد على Core DAO وStellar: مرساة التزام على السلسلة بتخزن إيصالات التنفيذ عشان أي حد يعيدها. مستعدة لـ Pi mainnet؛ ما في مدّعى حتى تفتح Pi mainnet.",
+      ar: "نفس النمط اللي نُجِد على CoreDAO وStellar: مرساة التزام على السلسلة بتخزن إيصالات التنفيذ عشان أي حد يعيدها. مستعدة لـ Pi mainnet؛ ما في مدّعى حتى تفتح Pi mainnet.",
     },
   },
   {
@@ -101,12 +129,12 @@ export const PI_KILLER_FEATURES = [
     title: { en: "One-line SDK integration", ar: "دمج SDK بسطر واحد" },
     body: {
       en: "npm install @coreguard/sdk gives a Pi Browser DApp or a Pi Wallet the same verifier used on Core and Stellar. The integration model is identical across the three networks.",
-      ar: "npm install @coreguard/sdk بيを与給 Pi DApp أو Pi Wallet نفس المحقّق اللي على Core وStellar. نمط الدمج واحد عبر الثلاث شبكات.",
+      ar: "npm install @coreguard/sdk بي给大家 Pi DApp أو Pi Wallet نفس المحقّق اللي على Core وStellar. نمط الدمج واحد عبر الثلاث شبكات.",
     },
   },
   {
     k: "Killer reference",
-    title: { en: "Pi Network apps reference CoreGuard for execution auditability and regulatory reporting", ar: "تطبيقات Pi Network تُرجِع CoreGuard للتدقيق وإ보고ات رقابية" },
+    title: { en: "Pi Network apps reference CoreGuard for execution auditability and regulatory reporting", ar: "تطبيقات Pi Network تُرجِع CoreGuard للتدقيق وإبـلغات رقابية" },
     body: {
       en: "The same verifier that proves a Core transaction and a Stellar swap also proves a Pi transaction once Pi mainnet is live. Cross-network execution truth is the differentiator.",
       ar: "نفس المحقّق اللي بيثبت معاملة Core وتبديل Stellar بيثبت معاملة Pi مرة تفتح Pi mainnet. حقيقة تنفيذ عابرة للشبكات دي الفرق.",
@@ -114,7 +142,7 @@ export const PI_KILLER_FEATURES = [
   },
   {
     k: "Killer customer",
-    title: { en: "Pi wallet providers, Pi DApp builders, Pi agent platforms, Pi ecosystem services, Pi audit and compliance services", ar: "مقدّمي محافظ Pi، مبنيّ Pi DApp، منصات وكلاء Pi، خدمات منظومة Pi، وخدمات تدقيق وامتثال Pi" },
+    title: { en: "Pi wallet providers, Pi DApp builders, Pi agent platforms, Pi ecosystem services, Pi community apps, Pi audit and compliance services", ar: "مقدّمي محافظ Pi، مبنيّ Pi DApp، منصات وكلاء Pi، خدمات منظومة Pi، تطبيقات مجتمع Pi، وخدمات تدقيق وامتثال Pi" },
     body: {
       en: "Every one of them needs a receipt it can show a user, an auditor or a regulator. That is the customer.",
       ar: "كل واحد فيهم محتاج إيصال يقدّمه للمستخدم أو المدقق أو الجهة الرقابية. دي اللي هو العميل.",
@@ -128,15 +156,15 @@ export const PI_MILESTONES = [
     title: { en: "Pi Browser verification overlay + Pi DApp SDK prototype", ar: "نموذج أولي لـ overlay verify Pi Browser + SDK Pi DApp" },
     body: {
       en: "A Pi Browser overlay and a Pi DApp SDK prototype that run a Pi transaction through CoreGuard and show a receipt summary before sign-off. Runs on a test or staging environment; clearly labelled as a prototype.",
-      ar: "Overlay Pi Browser و SDK Pi DApp تجريبيين بيinsch a معاملة Pi عبر CoreGuard وبيظهروا ملخص إيصال قبل التوقيع. بشغّلوا على بيئة اختبار أو إعداد، واضحين كنموذج أولي.",
+      ar: "Overlay Pi Browser و SDK Pi DApp تجريبيين بinsch a معاملة Pi عبر CoreGuard وبيظهروا ملخص إيصال قبل التوقيع. بشغّلوا على بيئة اختبار أو إعداد, واضعين كنموذج أولي.",
     },
   },
   {
     id: "MS-1",
-    title: { en: "Pi mainnet commitment anchor + Pi DApp/Wallet pilots", ar: "مرساة التزام Pi mainnet + تجارب دمج Pi DApp/Mحفظة" },
+    title: { en: "Pi mainnet commitment anchor + Pi DApp/Wallet pilots", ar: "مرساة التزام Pi mainnet + تجارب دمج Pi DApp/محفظة" },
     body: {
       en: "Once Pi mainnet is live, an on-chain commitment anchor is deployed on Pi mainnet and a small number of live integration pilots ship with Pi wallets, DApps or services. Reviewed and verified by Pi Network reviewers.",
-      ar: "بعد ما تفتح Pi mainnet، مرساة التزام على السلسلة بتُنشر على Pi mainnet وبتدمج تجارب حية شوية مع محافظ وPi DApps أو خدمات. بتُرقَب وتُتحقّق من قبل مراجعين Pi Network.",
+      ar: "بعد ما تفتح Pi mainnet, مرساة التزام على السلسلة بتُنشر على Pi mainnet وبتدمج تجارب حية شوية مع محافظ وPi DApps أو خدمات. بتُرقَب وتُتحقّق من قبل مراجعين Pi Network.",
     },
   },
   {
@@ -144,7 +172,7 @@ export const PI_MILESTONES = [
     title: { en: "Pi ecosystem attestation service + adoption scale", ar: "خدمة شهادة تنفيذ لمنظومة Pi + توسيع الاعتماد" },
     body: {
       en: "Pi ecosystem services (oracles, data services, escrow, agent platforms) ship an attestation service and demonstrated adoption across a growing set of Pi DApps, wallets and services.",
-      ar: "خدمات منظومة Pi (oracles, خدمات بيانات, حفظ, منصات وكلاء) بتشغّل خدمة شهادة وت扩散 الاعتماد across مجموعة متزايدة من Pi DApps و محافظ وخدمات.",
+      ar: "خدمات منظومة Pi (oracles, خدمات بيانات, حفظ, منصات وكلاء) بتشغّل خدمة شهادة وdemo توسيع الاعتماد عبر مجموعة متزايدة من Pi DApps و محافظ وخدمات.",
     },
   },
 ];
