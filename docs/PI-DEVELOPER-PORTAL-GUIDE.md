@@ -95,3 +95,23 @@ Portals usually want: a one-liner, a description, status, which networks are liv
 - Contact path visible.
 
 Copy the index file into the portal form. Do not invent claims. VERIFIED ≠ SAFE.
+
+## Pi Sign-In (implicit flow) — what is wired
+
+- Client ID: `tkmJEGqpQuiXUq7PX0RKiFXadFuzMEm3xCJJjwHMprk` (public; implicit flow has no client secret).
+- Authorize endpoint: `https://accounts.pinet.com/oauth/authorize` with `response_type=token`, `client_id`, `redirect_uri`, `scope=username`, `state`.
+- Redirect URI to register in the portal: `https://coreguard-trust-and-defense.lovable.app/pi-auth`
+- Callback: verifies `state`, then `POST /api/pi-me` (server route) → `GET https://api.minepi.com/v2/me` with `Authorization: Bearer <access_token>` → returns the app-scoped `uid` and `username`.
+- Storage: only `uid` + `username` in `sessionStorage`; the access token is used once and never stored or logged.
+- Status: WIRED — pending app-domain verification (`validation-key.txt` is served at the site root).
+- Secrets: the Pi server API key (payments) belongs in server env only; the wallet secret key must never be committed, pasted into a repo, or stored in client code.
+
+### Portal fields to paste
+
+| field | value |
+| --- | --- |
+| App URL | `https://coreguard-trust-and-defense.lovable.app` |
+| Privacy Policy URL | `https://coreguard-trust-and-defense.lovable.app/privacy` |
+| Terms of Service URL | `https://coreguard-trust-and-defense.lovable.app/terms` |
+| Redirect URI | `https://coreguard-trust-and-defense.lovable.app/pi-auth` |
+| Domain verification | `https://coreguard-trust-and-defense.lovable.app/validation-key.txt` |
