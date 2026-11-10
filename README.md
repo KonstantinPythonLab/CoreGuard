@@ -375,6 +375,15 @@ Like Core's on-chain anchor table above, the Stellar lane carries its own dedica
 | 9 | Products & services shipped | `packages/stellar` (intent→policy→gate · Soroban DEX · mainnet runner · Freighter) + Stellar killer docs · honest labels only | SHIPPED | [docs/PRODUCTS.md §11](docs/PRODUCTS.md) |
 | 10 | Honest mirror | signed mainnet funded transfers beyond the ONE owner-authorized anchor CALL + ONE gated swap — credential-gated owner decisions · npm double-gated · SaaS owner rails pending | HONEST | — |
 
+### Security posture — what execution proof does (and does not) prove
+
+CoreGuard answers one question with evidence: **did this execution conform to what was authorized?** It does not, and never claims to, answer adjacent questions. The separation is enforced by the honesty layer (`npm run claims:audit`, `npm run release:gate`), not by prose:
+
+- **Execution proof ≠ security audit.** A VERIFIED receipt proves that a specific on-chain execution matched a pre-declared intent + policy. It does NOT prove that every Soroban transaction type is protected, that the Execution Firewall cannot be bypassed, that a wallet can integrate without additional security work, or that the protocol withstands a determined attacker. Those are separate, larger claims; each stays `UNKNOWN`/`GATED` until a named test or review closes it.
+- **Permissionless vs. authorized anchor (Soroban).** The permissionless `commit(id, hash)` lane is an **open anchor** (anyone may anchor their own commitment; first-write-wins; a different hash for the same id is rejected fail-closed). It does NOT enforce owner identity at the contract level — by design, so anyone can prove their own execution. The race (a stranger pre-registering a wrong hash at a known id) is closed by the **authorized lane** `commit_authorized(owner, hash)`: the id is derived in-contract as `sha256(AUTH_DOMAIN ‖ strkey(owner) ‖ hash)`, and `owner.require_auth()` makes the write host-gated, so a stranger cannot occupy the owner's derived id. `assert_anchored_authorized` re-checks the full (id, owner, hash) triple. The two lanes are isolated storage namespaces; the deployed/1 mainnet instance keeps the permissionless ABI byte-identical (no redeploy, no restatement).
+- **What a successful swap proves — and only that.** The first SIGNED funded mainnet swap (tx `ac2a7990…`, ledger 65,338,112) proves that DEX-GATE/1 preflight VERIFIED and that the owner-signed `pathPaymentStrictSend` was CONFIRMED on the real mainnet order book, with wire read-back equal to `fee_charged` to the stroop. It proves nothing about other transaction types, other wallets, or other order books.
+- **Dated instruments.** Numbers in dated instruments (FINAL-REPORT, OWNER-DECISIONS, campaign kits) record what was measured on that date and are never rewritten; the single source of truth for the current suite total is `docs/state-snapshot.json#testsTotal` (enforced by `scripts/run-tests.mjs` and `test/ci/doc-numbers.test.js`). Current docs (README, STATUS, AGENTS, FINAL-REPORT-2026-11-09) all cite the same measured total.
+
 ## Quick start
 
 ```bash
