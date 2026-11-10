@@ -348,6 +348,33 @@ id, and `owner.require_auth()` makes the write host-gated) is documented in
 [soroban/commitment-anchor](soroban/commitment-anchor/README.md); the live
 mainnet instance remains the deployed/1 binary — no deploy, no restatement.
 
+### Stellar Phase 5 — live verification · التحقق الحي · verdict **LIVE-VERIFIED**
+
+The Phase-5 live verification runner (`scripts/stellar-soroban-deploy-live-verify.mjs`) closed the owner-authorized Soroban deploy lane against Stellar mainnet: exit `0` → verdict **LIVE-VERIFIED** — `MAINNET AUTHORIZED-LANE DEPLOY LIVE-VERIFIED (create proven from its own result meta; fresh-vault readback SIMULATED_NONE; balance arithmetic exact to the stroop)`.
+
+- create transaction proven from its own result meta — contract `CAZ3LQEMB37KICXEANKVMRNWMB5MD3O4FBC5GORB7QVUJE2WCPAHQPZB` (wasm `65da850c…c8257`) created at ledger **65408001** (latest ledger **65408223**);
+- fresh-vault readback → `SIMULATED_NONE` (`decodedKind: NONE`, `submitted: false`) — read-only, no submit;
+- balance arithmetic exact to the stroop — expected/live `81099724` stroops (`8.1099724` XLM) == live balance; deployer recorded balance `195069800`; create fee `178113` + upload fee `113791963`;
+- deploy-only readback did not return the expected empty lane → the deploy verdict is saved **NOT_CONFIRMED** (fail-closed) in `docs/evidence/stellar-soroban-deploy-live-verify-2026-11-10.json`;
+- evidence digest `sha256:102959d2d42429ab1d8505a08d46c6dc55255b10ea5bc38c43077a8c0cc52c10` · run finished `2026-11-10T16:12:42Z`.
+
+### Stellar dedicated truth table · جدول الحقيقة المخصص
+
+Like Core's on-chain anchor table above, the Stellar lane carries its own dedicated truth table — one row per executed surface, machine-checked, honest labels only:
+
+| # | Stellar surface | Lane fact | Honest status | Evidence |
+|---|---|---|---|---|
+| 1 | Mainnet wallet | `GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U` — live Horizon account · first tx `0.1 XLM → SDF` @ ledger 65,308,317 | LIVE | [docs/EVIDENCE-MATRIX.md](docs/EVIDENCE-MATRIX.md) |
+| 2 | Soroban anchor (mainnet) | `CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP` — **MAINNET DEPLOYED** · deployment untouched, no re-deploy | MAINNET DEPLOYED | [docs/evidence/stellar-soroban-wasm-manifest-42519059778.json](docs/evidence/stellar-soroban-wasm-manifest-42519059778.json) |
+| 3 | Commitment-anchor CALL (mainnet) | owner-authorized `commit(proofId, commitment)` **INVOKED** — tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec` · ledger 65,337,373 · on-chain read-back `read(proofId)` = `{hash, seq}` exact | MAINNET VERIFIED | [docs/evidence/stellar-soroban-commit-executed.json](docs/evidence/stellar-soroban-commit-executed.json) |
+| 4 | First SIGNED FUNDED swap (mainnet) | owner-authorized `pathPaymentStrictSend` **CONFIRMED** — tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097` · ledger 65,338,112 (trustline ledger 65,338,111) · `4.0598146 XLM → 0.6306239 USDC` · digest `sha256:837d0639…ac2c` | CONFIRMED | [docs/evidence/stellar-dex-swap-executed.json](docs/evidence/stellar-dex-swap-executed.json) |
+| 5 | AI Agent Payment Gate | STELLAR-AGENT/1 — **EXECUTED** · VERIFIED / REJECTED / HELD matrix · submission credential-gated, never auto-pay | EXECUTED | [docs/evidence/stellar-agent-gate-executed.json](docs/evidence/stellar-agent-gate-executed.json) |
+| 6 | Real-book DEX gate | DEX-GATE/1 — **EXECUTED** · five verdicts vs the REAL XLM/USDC mainnet order book · issuer network-discovered · depth-derived ceiling · 9/9 tests | EXECUTED | [docs/evidence/stellar-dex-gate-executed.json](docs/evidence/stellar-dex-gate-executed.json) |
+| 7 | Universal DApp Shield | `guard.*` — **EXECUTED** · 2 ALLOW · 2 REQUIRE_REVIEW · 1 DENY · 1 REFUSED (Q-FW10) | EXECUTED | [docs/evidence/universal-dapp-shield-executed.json](docs/evidence/universal-dapp-shield-executed.json) |
+| 8 | Phase 5 live verify | owner-authorized Soroban deploy lane — **LIVE-VERIFIED** · fresh-vault readback `SIMULATED_NONE` · balance arithmetic exact to the stroop | LIVE-VERIFIED | [docs/evidence/stellar-soroban-deploy-live-verify-2026-11-10.json](docs/evidence/stellar-soroban-deploy-live-verify-2026-11-10.json) |
+| 9 | Products & services shipped | `packages/stellar` (intent→policy→gate · Soroban DEX · mainnet runner · Freighter) + Stellar killer docs · honest labels only | SHIPPED | [docs/PRODUCTS.md §11](docs/PRODUCTS.md) |
+| 10 | Honest mirror | signed mainnet funded transfers beyond the ONE owner-authorized anchor CALL + ONE gated swap — credential-gated owner decisions · npm double-gated · SaaS owner rails pending | HONEST | — |
+
 ## Quick start
 
 ```bash
