@@ -24,8 +24,13 @@ authorized**, including a batch that buries a second payment.
 ## What it does not do
 
 - **No signer.** Keys stay with the wallet; this module never accepts one.
-  Freighter integration is `NOT_BUILT` (planned, Phase P1).
-- **No submission.** There is no network call anywhere in the package.
+  The `adapters/freighter.mjs` interface has carried a real testnet signature
+  (see below), but a real Freighter **extension** has never signed here: it was
+  probed in the available browser and is not installed (`window.freighter` is
+  undefined). Extension support is `NOT_BUILT`.
+- **No submission.** There is no network call anywhere in the package. A
+  separate runner, `scripts/agent-gate-testnet-sign.mjs`, builds → signs →
+  submits → re-decodes and writes the artifact; the package itself stays offline.
 - **No chain claim.** `VERIFIED` from `verifyReceipt()` means "these bytes
   recompute consistently". It is not a ledger read and not an audit.
 
@@ -46,6 +51,19 @@ returns different bytes; `verify-cli.mjs` recomputes everything later.
 An envelope carries no network: the passphrase enters the transaction hash, so
 testnet bytes cannot be replayed as mainnet — and the caller must be right about
 the network it asks for.
+
+## What actually reached a ledger
+
+On 2026-11-10 an envelope built here was signed through the Freighter interface
+and included on Stellar **testnet**: tx
+`7f863dd2512a82d1d10d6d221d311260698fc018c233113d5e5971fb9741b757` at ledger
+5,665,413, with the gate's `ALLOW`, conformance `VERIFIED`, and an Ed25519
+receipt that re-verifies from its bytes. The signer was a **local keypair behind
+the Freighter interface**, not the extension.
+
+`node scripts/agent-gate-testnet-sign.mjs --verify` re-derives that artifact
+offline (envelope hash, operations, conformance, receipt signature). Read it as:
+the signing path is real and chain-accepted; the wallet is still missing.
 
 ## Run it
 

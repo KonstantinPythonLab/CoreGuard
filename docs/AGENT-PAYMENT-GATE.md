@@ -8,8 +8,12 @@ object that was authorized — with an evidence receipt a third party re-derives
 without trusting CoreGuard.
 
 **Status (three axes, per `docs/surface-status.json`):**
-`code: BUILT` · `execution: TEST_EXECUTED` · `integration: NOT_BUILT`.
-No wallet signer, no submission, no chain read, no external adopter, no audit.
+`agent-gate` — `code: BUILT` · `execution: TEST_EXECUTED` · `integration: NOT_BUILT`.
+The envelope lane it hands off to is further along: `agent-gate-xdr` is
+`execution: EXECUTED` (a signed envelope reached a testnet ledger) while
+`agent-gate-freighter` stays `execution: TEST_EXECUTED` and
+`code: BUILT_UNVERIFIED`, because no real extension has signed. No wallet
+extension, no external adopter, no audit.
 
 ---
 
@@ -67,8 +71,9 @@ ledger read, not an audit, and not a statement about funds.
 | Intent digest and envelope conformance (incl. multi-op divergence) | built, tested offline |
 | Ed25519 receipts, chain, independent verifier | built, tested offline |
 | Hardened fixed-point amounts (7 dp, BigInt, no floats) | built, tested |
-| Wallet signing (Freighter) | **NOT_BUILT** — no browser wallet in CI, no credential path |
-| Horizon / Soroban submission | **NOT_BUILT** — deliberately absent from this package |
+| Wallet signing — Freighter **extension** | **NOT_BUILT** — probed in the available browser and not installed (`window.freighter` is undefined); CI has no browser wallet |
+| Wallet signing — Freighter **interface** | exercised 2026-11-10: a local keypair behind the interface signed an authorized envelope that testnet included at ledger 5,665,413 (§5.1) |
+| Horizon / Soroban submission | **NOT_BUILT in this package** — deliberately absent; `scripts/agent-gate-testnet-sign.mjs` submits outside it and the artifact records the ledger |
 | Soroban on-chain policy registry | **PLANNED** — contract not written |
 | External pilot | **NOT_BUILT** — 0 named partners |
 | Independent audit | **NOT_PERFORMED** |
@@ -102,6 +107,31 @@ what a wallet actually signs:
 passphrase is supplied by the caller and enters the transaction hash, so a
 testnet signature cannot be replayed as mainnet — but the caller must be right
 about which network it asks for.
+
+### 5.1 What actually reached a ledger
+
+On 2026-11-10 the whole loop ran against Stellar **testnet** with real network
+calls, and the artifact is committed:
+
+| Fact | Value |
+|---|---|
+| Gate decision | `ALLOW` (`IN_POLICY`) |
+| Envelope built vs signed hash | identical — `7f863dd2512a82d1d10d6d221d311260698fc018c233113d5e5971fb9741b757` |
+| Conformance on the signed envelope | `VERIFIED` |
+| Submission | successful, ledger **5,665,413** |
+| Ed25519 receipt | `VERIFIED`, id `sha256:9b57f2b7…98949b` |
+| Signer | **a local keypair behind the Freighter interface** — not the extension |
+
+Re-derive it offline with `node scripts/agent-gate-testnet-sign.mjs --verify`:
+it re-hashes the signed XDR, decodes the operations, re-runs conformance and
+re-verifies the receipt signature. The signer key was generated in memory,
+funded by friendbot and dropped; nothing was read from `.env`.
+
+**Ceiling, and it is the whole point:** a real signature reached a real ledger,
+so the *signing path* is no longer offline-only. But the extension is absent from
+the available browser, so "Freighter works" is still **NOT_PROVEN**, and
+`integration` stays `NOT_BUILT` — no external project runs this, and one
+self-funded testnet transfer is not adoption.
 
 ### Measured performance
 
@@ -159,9 +189,11 @@ so: **a real extension is not exercised here.**
 
 The gate becomes adoptable only when all four exist:
 
-1. **Freighter signing path** — the envelope is signed in the user's wallet and
-   returned; the gate never sees a key. Deliverable: a browser demo a judge can
-   run, showing ALLOW and MISMATCH in the same session.
+1. **Freighter signing path** — the interface, the refusal cases and a real
+   testnet signature already exist; what is missing is the *extension*: the
+   envelope signed inside the user's browser wallet and returned, with the gate
+   never seeing a key. Deliverable: a browser demo a judge can run, showing
+   ALLOW and MISMATCH in the same session.
 2. **Measured performance** — p50/p95 gate latency and cost per verification,
    published with the machine that produced them.
 3. **One external pilot** — a Soroban DApp or wallet that calls the gate in its

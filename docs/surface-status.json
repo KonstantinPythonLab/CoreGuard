@@ -108,11 +108,11 @@
       "label": "Envelope builder and decoder (AGENT-XDR/1)",
       "path": "packages/agent-gate/adapters/stellar-xdr.mjs",
       "code": "BUILT",
-      "execution": "TEST_EXECUTED",
+      "execution": "EXECUTED",
       "integration": "NOT_BUILT",
       "matrixRow": true,
-      "evidence": ["test/integrations/agent-gate-envelope.test.mjs"],
-      "note": "Builds unsigned envelopes, decodes signed ones, refuses secrets, fee-bumps and unreadable bytes. An envelope carries no network: the hash binds the caller's passphrase."
+      "evidence": ["docs/evidence/agent-gate-testnet-signature.json", "test/integrations/agent-gate-envelope.test.mjs"],
+      "note": "Builds unsigned envelopes, decodes signed ones, refuses secrets, fee-bumps and unreadable bytes. An envelope carries no network: the hash binds the caller's passphrase. An envelope built here was signed and included on Stellar testnet (tx 7f863dd2…41b757, ledger 5665413) on 2026-11-10 and re-decoded offline."
     },
     {
       "id": "agent-gate-freighter",
@@ -122,8 +122,8 @@
       "execution": "TEST_EXECUTED",
       "integration": "NOT_BUILT",
       "matrixRow": true,
-      "evidence": ["test/integrations/agent-gate-envelope.test.mjs"],
-      "note": "Contract verified with an injected wallet: signed, empty, unsigned and swapped-bytes cases. A real Freighter extension has never signed in this repo."
+      "evidence": ["docs/evidence/agent-gate-testnet-signature.json", "test/integrations/agent-gate-envelope.test.mjs"],
+      "note": "Contract verified with an injected wallet: signed, empty, unsigned and swapped-bytes cases. The signing path also carried a real testnet signature to a ledger, but with a local keypair behind the Freighter interface — the extension was probed in the available browser and is NOT installed (window.freighter undefined), so a real extension has still never signed here."
     },
     {
       "id": "agent-gate-verify-cli",

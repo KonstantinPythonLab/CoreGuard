@@ -12,8 +12,16 @@
  *
  * Honest status: the adapter is BUILT and unit-exercised with an injected
  * wallet object. It has NOT been exercised against a real Freighter extension:
- * there is no browser wallet in CI and no credential path. That is
- * `exercisedWithRealWallet: false`, and `integrationStatus: NOT_BUILT`.
+ * the extension was probed in the available browser and is not installed
+ * (`window.freighter` and `window.freighterApi` are undefined), and CI has no
+ * browser wallet at all. That is `exercisedWithRealWallet: false`, and
+ * `integrationStatus: NOT_BUILT`.
+ *
+ * What HAS been exercised through this interface: a local keypair signed an
+ * envelope the gate authorized and Stellar testnet included it (ledger 5665413,
+ * 2026-11-10) — the signature path is real, the wallet is not. Both facts are
+ * recorded in docs/evidence/agent-gate-testnet-signature.json so a reader
+ * cannot average them into "Freighter works".
  */
 
 import { decodeEnvelope, NETWORK_PASSPHRASE, AGENT_XDR_VERSION } from "./stellar-xdr.mjs";
@@ -96,6 +104,8 @@ export function status() {
     runMode: "ADAPTER_READY",
     exercisedWithRealWallet: false,
     integrationStatus: "NOT_BUILT",
+    realWalletProbe: "window.freighter and window.freighterApi are undefined in the available packaged Chromium — the extension is not installed there, so no extension has ever signed here",
+    chainAcceptedSignature: "2026-11-10 — a local keypair behind this interface signed an authorized envelope that Stellar testnet included at ledger 5665413 (tx 7f863dd2…41b757); see docs/evidence/agent-gate-testnet-signature.json",
     note: "Signing is delegated to the wallet; the gate holds no key and cannot submit. Real-extension exercise is pending.",
   };
 }

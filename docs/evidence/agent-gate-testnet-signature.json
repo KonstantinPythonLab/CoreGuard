@@ -1,0 +1,152 @@
+{
+  "schema": "CoreGuard-Evidence/1",
+  "artifact": "agent-gate-testnet-signature",
+  "version": "AGENT-GATE/1",
+  "network": "testnet",
+  "horizon": "https://horizon-testnet.stellar.org",
+  "transfer": {
+    "source": "GC25DVVR2WB4W7FSEYDWS6R27DXMP2WRX5INBYKQLH4UWVDOIPPXJNQE",
+    "destination": "GDLIACISSVS2LHMPUUCTSUDETWUIDNDNWJKHYQGMOHJSCSNR5XFS7UYY",
+    "amount": "0.0000001",
+    "asset": "XLM",
+    "memo": "cg-agent-gate-e2e"
+  },
+  "gate": {
+    "verdict": "ALLOW",
+    "reasons": [],
+    "intentDigest": "sha256:d5c3b8786f9275fea8a1922cbcc20f5b4c0c9a2f3094c3e187b371a9364e0f65",
+    "policyDigest": "sha256:3a3b5d6e2d817b208e5caa1fe16c5d7a304608c9cf4321e8a7d0a67cada6f296"
+  },
+  "envelope": {
+    "builtTxHash": "7f863dd2512a82d1d10d6d221d311260698fc018c233113d5e5971fb9741b757",
+    "signedTxHash": "7f863dd2512a82d1d10d6d221d311260698fc018c233113d5e5971fb9741b757",
+    "hashMatch": true,
+    "signatureCount": 1,
+    "fee": "100",
+    "signedXdr": "AAAAAgAAAAC10dax1YPLfLImB2l6Ovjux+rRv1DQ4VBZ+UtUbkPfdAAAAGQAVnKCAAAAAQAAAAEAAAAAAAAAAAAAAABq858mAAAAAQAAABFjZy1hZ2VudC1nYXRlLWUyZQAAAAAAAAEAAAAAAAAAAQAAAADWgAkSlWWlnY+lBTlQZJ2ogbRtslR8QMxx0yFJse3LLwAAAAAAAAAAAAAAAQAAAAAAAAABbkPfdAAAAEAeaypZLZiEYzaYzclAkxP5vYCcox5837gTXy1RLEcLGZCJdmEpH5yMbnySy/2f325m9rKjCO8Uw+iY7RgsWGcC",
+    "signedXdrSha256": "130e11e07b161470a54843d43bcdabf2b74b55006b541b7e9cc73c0b63522e7b"
+  },
+  "conformance": {
+    "verdict": "VERIFIED",
+    "mismatches": []
+  },
+  "submission": {
+    "hash": "7f863dd2512a82d1d10d6d221d311260698fc018c233113d5e5971fb9741b757",
+    "ledger": 5665413,
+    "successful": true,
+    "feeCharged": "100",
+    "submittedAt": "2026-11-10T22:45:09Z",
+    "hashEqualsSigned": true
+  },
+  "receipt": {
+    "receiptId": "sha256:9b57f2b7f306570f66a0561a0a63290a858133ef01402e254e5b41311398949b",
+    "verifyStatus": "VERIFIED",
+    "operatorPublicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAjvUidwIlhCvZ4xUphwYWtGhlCcw1ledqOH/d3Ye8OPg=\n-----END PUBLIC KEY-----\n",
+    "receipt": {
+      "schema": "AGENT-RECEIPT/1",
+      "version": "AGENT-GATE/1",
+      "seq": 0,
+      "prevReceiptDigest": null,
+      "evaluatedAt": "2026-11-10T22:45:06.715Z",
+      "subject": {
+        "intent": {
+          "agentId": "agent://coreguard/e2e-1",
+          "source": "GC25DVVR2WB4W7FSEYDWS6R27DXMP2WRX5INBYKQLH4UWVDOIPPXJNQE",
+          "destination": "GDLIACISSVS2LHMPUUCTSUDETWUIDNDNWJKHYQGMOHJSCSNR5XFS7UYY",
+          "amount": "0.0000001",
+          "asset": "XLM",
+          "network": "testnet",
+          "memo": "cg-agent-gate-e2e",
+          "createdAt": "2026-11-10T22:45:06.715Z",
+          "expiresAt": "2026-11-10T22:55:06.715Z",
+          "nonce": 1
+        },
+        "policy": {
+          "version": "AGENT-POLICY/1",
+          "network": "testnet",
+          "assets": [
+            "XLM"
+          ],
+          "recipients": [
+            "GDLIACISSVS2LHMPUUCTSUDETWUIDNDNWJKHYQGMOHJSCSNR5XFS7UYY"
+          ],
+          "agents": [
+            "agent://coreguard/e2e-1"
+          ],
+          "perTxMax": "1",
+          "windowMax": "1",
+          "windowSpent": "0",
+          "windowId": "testnet-2026-11-10",
+          "requireMemo": true
+        },
+        "execution": {
+          "status": "SUBMITTED",
+          "network": "testnet",
+          "operations": [
+            {
+              "type": "payment",
+              "source": "GC25DVVR2WB4W7FSEYDWS6R27DXMP2WRX5INBYKQLH4UWVDOIPPXJNQE",
+              "memo": "cg-agent-gate-e2e",
+              "destination": "GDLIACISSVS2LHMPUUCTSUDETWUIDNDNWJKHYQGMOHJSCSNR5XFS7UYY",
+              "amount": "0.0000001",
+              "asset": "XLM"
+            }
+          ],
+          "intentDigest": null,
+          "txHash": "7f863dd2512a82d1d10d6d221d311260698fc018c233113d5e5971fb9741b757"
+        }
+      },
+      "decision": {
+        "verdict": "ALLOW",
+        "reasons": [],
+        "checks": [
+          {
+            "id": "POLICY_PARSED",
+            "result": "PASS",
+            "detail": "AGENT-POLICY/1"
+          },
+          {
+            "id": "NOT_EXPIRED",
+            "result": "PASS",
+            "detail": "valid until 2026-11-10T22:55:06.715Z"
+          }
+        ],
+        "intentDigest": "sha256:d5c3b8786f9275fea8a1922cbcc20f5b4c0c9a2f3094c3e187b371a9364e0f65",
+        "policyDigest": "sha256:3a3b5d6e2d817b208e5caa1fe16c5d7a304608c9cf4321e8a7d0a67cada6f296"
+      },
+      "conformance": {
+        "verdict": "VERIFIED",
+        "mismatches": [],
+        "reasons": [
+          "IN_POLICY"
+        ]
+      },
+      "digests": {
+        "intent": "sha256:d5c3b8786f9275fea8a1922cbcc20f5b4c0c9a2f3094c3e187b371a9364e0f65",
+        "policy": "sha256:3a3b5d6e2d817b208e5caa1fe16c5d7a304608c9cf4321e8a7d0a67cada6f296",
+        "execution": "sha256:d084610ea5b51b81c83ef065209435f978c2ee2918108ce8cf3217b8bf26c60c"
+      },
+      "signature": "h5dp9Ya1aYyHDbg56X34hcsEUEZu75cY4bK0NXNWxbpANscc0beLQu4Qs2FAcgnr/6F22trUr6eAgmt+CfSYDg==",
+      "receiptId": "sha256:9b57f2b7f306570f66a0561a0a63290a858133ef01402e254e5b41311398949b"
+    }
+  },
+  "wallet": {
+    "kind": "local-keypair-behind-freighter-interface",
+    "adapter": "FREIGHTER-ADAPTER/1",
+    "exercisedWithRealWallet": false,
+    "extensionProbe": {
+      "windowFreighter": "undefined",
+      "windowFreighterApi": "undefined",
+      "note": "probed in the packaged Chromium before this run; the extension is not installed there",
+      "probedAt": "2026-11-10T22:45:09Z"
+    }
+  },
+  "gateModuleStatus": {
+    "runMode": "OFFLINE_PROTOTYPE",
+    "chainSubmission": "NOT_PERFORMED",
+    "note": "this runner submits; the gate module itself still has no Horizon call"
+  },
+  "costCeiling": "one testnet stroop plus the network fee; friendbot funded the signer, no mainnet key was read",
+  "ceiling": "Real testnet signature and real ledger inclusion, signed by a local keypair behind the Freighter interface. A Freighter EXTENSION has still never signed here: window.freighter is undefined in the available browser. This is not adoption, not an audit, and not a statement about funds beyond this single transfer.",
+  "generatedAt": "2026-11-10T22:45:09Z"
+}
