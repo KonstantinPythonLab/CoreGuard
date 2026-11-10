@@ -57,6 +57,16 @@ export const WALLET_FILE_REL = ".stellar-wallet.json";
 export const ARTIFACT_NAME = "cg-commitment-anchor-wasm";
 export const MAINNET_FEE_FLOOR = 1000000;
 export const MAINNET_BALANCE_MIN_XLM = 2;
+// Fee-solvency constants the ledger itself prices against: a transaction whose declared fee
+// would leave the account below its minimum balance is refused by the network with
+// txResultCode txInsufficientBalance (-7) BEFORE any effect (measured 2026-11-10 on the real
+// mainnet upload(wasm) of cg_commitment_anchor.wasm: the simulation priced 130,861,110
+// stroops while the funded deployer held 3.5069800 XLM = 35,069,800 stroops). The minimum
+// balance for a non-sponsoring single-entry account is 2 x base reserve (5,000,000 stroops
+// each) on mainnet; an account with extra subentries/trustlines owes MORE, so this constant
+// is the documented lower bound of the ledger's rule, never an upper one.
+export const MAINNET_BASE_RESERVE_STROOPS = 5000000;
+export const MAINNET_MIN_BALANCE_STROOPS = 10000000;
 export const INFRA = {
   testnet: { rpc: "https://soroban-testnet.stellar.org", horizon: "https://horizon-testnet.stellar.org", friendbot: "https://friendbot.stellar.org" },
   mainnet: { rpc: "https://mainnet.sorobanrpc.com", horizon: "https://horizon.stellar.org", friendbot: null },
@@ -76,7 +86,10 @@ export const KNOWN_VECTOR = {
 /** Byte-flipped vector hash — ONLY for the fail-closed mismatch probe. */
 export const WRONG_HASH = "0xc1dbfb45b6c8e13b3738822360ea737adfc045d4acb808bdaeac563c8af31052";
 
-class Fail extends Error {}
+class Fail extends Error {
+  /** Attach the partial steps list so a caught run can surface diagnostics. */
+  constructor(msg, steps) { super(msg); this.steps = steps || null; }
+}
 
 const MAINNET = { decisions: null }; // recorded decision doc parsed once per run
 
@@ -301,10 +314,52 @@ function toContractStrkey(contractId) {
   try { return StrKey.encodeContract(Buffer.from(h, "hex")); } catch { return contractId; }
 }
 
-async function sendAndPoll(rpcServer, net, tx, keypair, label) {
+async function sendAndPoll(rpcServer, net, tx, keypair, label, solvencyGate = null) {
   const inter = INFRA[net];
-  const prepared = await rpcServer.prepareTransaction(tx);
-  prepared.sign(keypair);
+  // Transient-network retry (preparation phase ONLY): prepareTransaction + sign may
+  // hit a brief connection failure (undici "fetch failed", measured 2026-11-08
+  // mid-rehearsal on the first commit). Nothing has been submitted at this point,
+  // so a retry re-prepares the SAME reserved sequence slot — the bookkeeping stays
+  // exact. HostError is a deterministic host verdict and is NEVER retried; a throw
+  // from sendTransaction itself is NOT retried (may-or-may-not-have-landed
+  // ambiguity — fail-closed instead of risking a double-send).
+  const isTransient = (e) => {
+    const m = String((e && e.message) || e);
+    if (/HostError/i.test(m)) return false;
+    return /fetch failed|ConnectTimeout|UND_ERR|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|network/i.test(m);
+  };
+  let prepared = null;
+  let prepErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      prepared = await rpcServer.prepareTransaction(tx);
+      prepared.sign(keypair);
+      prepErr = null;
+      break;
+    } catch (e) {
+      prepErr = e;
+      if (!isTransient(e)) throw e;
+      if (attempt < 2) { console.log(`${label}: transient preparation failure (${String((e && e.message) || e)}) — retrying once (nothing submitted)`); await sleep(3000); }
+    }
+  }
+  if (prepErr || !prepared) throw prepErr;
+  // Fee-solvency gate (fail-closed, BEFORE any submission): prepareTransaction has finalized
+  // the tx's declared fee from its own simulation. The ledger refuses a tx whose fee would
+  // leave the paying account below its minimum balance (txInsufficientBalance); catching that
+  // locally yields a coded, zero-submission refusal instead of a blind wire reject - measured
+  // 2026-11-10 when the priced fee 130861110 stroops exceeded the funded 35069800 stroops
+  // balance. The balance snapshot is the preflight read (read-only); between it and here only
+  // this run's own writes can move the account, and the create step re-bases the snapshot with
+  // the upload's actually-charged fee before its own check.
+  if (solvencyGate) {
+    const solvency = evaluateFeeSolvency({ feeStroops: prepared.fee, balanceStroops: solvencyGate.balanceStroops, minReserveStroops: solvencyGate.minReserveStroops });
+    if (solvency.state !== "ALLOWED") {
+      // Nothing was submitted, so no sequence slot was consumed on-chain; the run aborts right
+      // after the caller records this refusal, and every run re-reads the live sequence from
+      // the wire at startup before building anything.
+      return { step: label, state: "REJECTED", rejectFace: "PRE_SEND_SOLVENCY", error: solvency.error };
+    }
+  }
   // SDK 17.4+ (RpcServer.sendTransaction): the wire param must be the signed Transaction object —
   // the client calls transaction.toXdr() internally, so a raw base64 string has no such method and
   // crashes (measured: testnet rehearsal died in _sendTransaction on the first submission).
@@ -338,8 +393,54 @@ async function sendAndPoll(rpcServer, net, tx, keypair, label) {
 }
 
 function diagnostic(res) {
-  try { return JSON.stringify({ status: res.status, hash: res.hash, errorResultXdr: res.errorResultXdr }); }
-  catch { return "(undecodable sendTransaction response)"; }
+  // SDK 17.4 raw sendTransaction parses errorResultXdr into a TYPED `errorResult`
+  // (TransactionResult object) and DELETES the raw string field — so read both
+  // faces. Include the base64 result bytes (machine-readable) + a decoded
+  // transaction/op code chain (human-readable) when decodable.
+  try {
+    const parts = { status: res && res.status, hash: (res && res.hash) || null };
+    const er = res && (res.errorResultXdr || res.errorResult) || null;
+    let b64 = null;
+    if (typeof er === "string") b64 = er;
+    else if (er && typeof er.toXDR === "function") b64 = er.toXDR("base64");
+    else if (er && typeof er.toXdr === "function") b64 = er.toXdr("base64");
+    if (b64) parts.errorResultXdr = b64;
+    if (b64) {
+      try {
+        const tr = xdr.TransactionResult.fromXDR(b64, "base64");
+        const bodyArm = tr && (tr.type || null);
+        const body = tr && (tr.value !== undefined ? tr.value : tr);
+        const inner = body && body.errorResultXdr !== undefined ? body.errorResultXdr : body;
+        const results = inner && inner.results ? inner.results : (body && body.results) || [];
+        parts.resultCode = bodyArm || null;
+        parts.operationResults = results.map((r) => {
+          const t = r && (r.type || null);
+          const v = r && (r.value !== undefined ? r.value : r);
+          const inv = v && v.invokeHostFunctionResult;
+          return t && t !== 'invokeHostFunctionResultSuccess' && inv ? `op:${t}` : (t || null);
+        }).filter(Boolean);
+      } catch { /* keep the raw bytes only */ }
+    }
+    if (b64) {
+      // The body-arm walk above only fills resultCode for success/failed arm shapes. A
+      // sendTransaction REJECT carries a bare result-code union arm with NO operation
+      // results (measured 2026-11-10: AAAA AAfMyDb////5AAAAAA== recorded resultCode null
+      // before this decode existed). decodeTransactionResultCode reads the same bytes
+      // through the SDK's own schema enum - name + numeric code + feeCharged - so the
+      // artifact carries its own verdict instead of a hole. Fail-closed: an undecodable
+      // blob keeps the raw bytes only.
+      const decoded = decodeTransactionResultCode(b64);
+      if (decoded.decodable) {
+        parts.resultCode = decoded.name || `code ${decoded.code}`;
+        parts.resultCodeNumeric = decoded.code;
+        if (decoded.feeCharged != null) parts.feeCharged = decoded.feeCharged;
+      }
+    }
+    if (res && res.diagnosticEvents && Array.isArray(res.diagnosticEvents)) {
+      try { parts.diagnosticEventsXdrB64 = res.diagnosticEvents.map((d) => (typeof d === "string" ? d : (typeof d.toXDR === "function" ? d.toXDR("base64") : null))).filter(Boolean); } catch {}
+    }
+    return JSON.stringify(parts);
+  } catch { return "(undecodable sendTransaction response)"; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -349,6 +450,21 @@ function diagnostic(res) {
 
 function armOf(v) { // e.g. "scvVec" | "scvBool" — xdr-object switch() OR POJO .type
   return typeof v.switch === "function" ? v.switch().name : ((v.switch && v.switch.name) || v.type);
+}
+
+/**
+ * Proxy-safe member accessor. SDK 17.4 ships per-arm classes whose OWN value
+ * props (`credentials`, `addressV2`, `address`, `type`, …) SHADOW the prototype
+ * accessor methods — reading `entry.credentials` yielded the VALUE while the
+ * legacy method-shaped read threw "e.credentials is not a function"
+ * (measured against the live soroban-testnet sim face 2026-11-08). Call a
+ * function member when it is declared as one and read it otherwise.
+ */
+function callOrProp(v, name) {
+  if (v === null || v === undefined) return undefined;
+  const own = v[name];
+  if (own === undefined) return undefined;
+  return typeof own === "function" ? own.call(v) : own;
 }
 
 function rawOf(v) { // xdr-object .value() OR POJO .value OR the arm-named field
@@ -371,9 +487,60 @@ export function decodeAuthorizedAnchorScVal(rv) {
   }
   if (!val || typeof val !== "object") return { kind: "UNDECODABLE" };
   const arm = armOf(val);
-  if (arm === "scvBool") return { kind: "NONE" }; // soroban Option::None
-  if (arm === "scvVec") return decodeStruct(safeVecChildren(val));
+  if (arm === "scvBool") return { kind: "NONE" }; // soroban Option::None (typed-sim face measured 2026-11-08)
+  // FRESH-INSTANCE face (live mainnet 2026-11-10, readTargetId 0xb5f9655d… on the
+  // deployed commitment-anchor): an anchor ABSENT lane serializes scvVoid, not
+  // scvBool(false). Both faces are the same semantic lane (no anchor yet); anything
+  // else keeps the fail-closed UNDECODABLE — a present anchor is never shaped like Void.
+  if (arm === "scvVoid") return { kind: "NONE" };
+  // Typed-sim truth (soroban-testnet live sim 2026-11-08): the host serializes
+  // the AuthorizedAnchor contracttype as a scvMap keyed by symbols —
+  // {hash: scvBytes 32B, owner: scvAddress(account), seq: scvU32} — the 3-field
+  // vec face comes only from event payloads. Both faces stay supported.
+  if (arm === "scvMap") return decodeMapStruct(val);
+  if (arm === "scvVec") {
+    const kids = safeVecChildren(val);
+    if (kids.length === 1 && kids[0] && typeof kids[0] === "object" && armOf(kids[0]) === "scvMap") return decodeMapStruct(kids[0]);
+    return decodeStruct(kids);
+  }
   return { kind: "UNDECODABLE", arm };
+}
+
+function safeMapEntries(v) {
+  let entries;
+  try { entries = callOrProp(v, "map"); } catch { return []; }
+  if (!Array.isArray(entries)) return [];
+  return entries.map((row) => {
+    let sym = null;
+    let value = null;
+    try {
+      const k = callOrProp(row, "key");
+      if (k && armOf(k) === "scvSymbol") {
+        const x = callOrProp(k, "sym") ?? rawOf(k); // arm-named field is "sym" (rawOf's derived "symbol" is NOT the real prop name)
+        const b = typeof x?.bytes === "function" ? x.bytes() : (x instanceof Uint8Array ? x : x?.bytes);
+        if (b instanceof Uint8Array || (b && typeof b.length === "number" && typeof b[0] === "number")) {
+          sym = Buffer.from(b).toString("ascii");
+        }
+      }
+    } catch { /* fail-closed: the row is skipped via sym=null */ }
+    try { value = callOrProp(row, "val"); } catch { value = null; }
+    return { sym, value };
+  });
+}
+
+function decodeMapStruct(v) {
+  const rows = safeMapEntries(v);
+  const byKey = {};
+  for (const r of rows) { if (r.sym && byKey[r.sym] === undefined) byKey[r.sym] = r.value; }
+  const keysSeen = rows.map((r) => r.sym || "<undecodable>");
+  if (!Object.prototype.hasOwnProperty.call(byKey, "hash") || !Object.prototype.hasOwnProperty.call(byKey, "owner") || !Object.prototype.hasOwnProperty.call(byKey, "seq")) {
+    return { kind: "UNDECODABLE", via: "map", keys: keysSeen };
+  }
+  const hashHex = bytes32Hex(byKey.hash);
+  const owner = addressStrkey(byKey.owner);
+  const seq = seqOf(byKey.seq);
+  if (!hashHex || !owner || seq === null) return { kind: "UNDECODABLE", via: "map", keys: keysSeen };
+  return { kind: "SOME", hashHex, owner, seq };
 }
 
 function decodeStruct(children) {
@@ -487,8 +654,15 @@ function baseArtifact({ net, decisions, manifest, wasmSha256, wasmBytesLen, depl
 }
 
 function finalizeVerdict(artifact) {
-  const bad = (artifact.steps || []).some((s) => s.state && s.state !== "INVOKED" && s.state !== "IDEMPOTENT" && s.state !== "OK" && s.state !== "REFUSED" && s.state !== "SIMULATED_NONE" && s.state !== "SKIP");
-  if ((artifact.steps || []).some((s) => s.ok === false)) artifact.summary.verdict = "NOT_CONFIRMED — one or more steps failed their expected state (fail-closed; inspect steps)";
+  // A verdict must never lie about its own steps (the false-green class): the committed
+  // 2026-11-09 mainnet artifact recorded steps [<upload(wasm)> REJECTED] with deployed:false
+  // while its summary STILL read the full DEPLOY_VERDICT string, silently, because the
+  // failure was computed here and then never applied. A REJECTED/FAILED/TIMEOUT step (the
+  // network faces sendAndPoll returns on a dead tx) or an ok:false record always downgrades.
+  // EXPECTED-state names stay allowed (IDEMPOTENT/OK/REFUSED/SIMULATED_NONE/SKIP) so a green
+  // rehearsal/replay keeps its exact verdict.
+  const failed = (artifact.steps || []).some((s) => s.ok === false || s.state === "REJECTED" || s.state === "FAILED" || s.state === "TIMEOUT");
+  if (failed) artifact.summary.verdict = "NOT_CONFIRMED — one or more steps failed their expected state (fail-closed; inspect steps)";
   else if (artifact.network === "stellar-mainnet") {
     if (artifact.laneWrites !== "NONE" || artifact.rehearsal) artifact.summary.verdict = "NOT_CONFIRMED — a mainnet run must stay deploy-only";
     else artifact.summary.verdict = DEPLOY_VERDICT;
@@ -499,6 +673,122 @@ function finalizeVerdict(artifact) {
     artifact.summary.verdict = "NOT_CONFIRMED — testnet run without rehearsal exercise (--rehearse absent)";
   }
   return artifact;
+}
+
+/* ------------------------------------------------------------------ */
+/* Resume path: wire-only instance-address resolution                  */
+/* ------------------------------------------------------------------ */
+/* A deterministic-salt re-run refuses a fresh create pre-submission   */
+/* with HostError ExistingValue, so that run holds NO result meta of   */
+/* its own to parse. The resumed run must therefore discover the       */
+/* EXISTING instance address FROM THE WIRE, never from a local         */
+/* derivation: sha256(ContractIDPreimage) does not reproduce the host  */
+/* contract id (measured) and the known-answer vector id (owner+hash)  */
+/* is the IN-CONTRACT COMMIT id, not a contract address — conflating   */
+/* them sent the first rehearsal against a non-existing instance       */
+/* (HostError Storage/MissingValue).                                   */
+/* Resolution: walk this wallet's Horizon tx history (public key       */
+/* only — no secrets travel), read each tx's Soroban result meta from  */
+/* the RPC wire, and collect the contractData-instance entries that    */
+/* carry the pinned wasm sha256 as their executable. Identity is then  */
+/* re-proven by reading the LIVE instance entry back on the RPC wire.  */
+/* Fail-closed on ambiguity, absence or unreadable wire.               */
+
+export async function resolveExistingInstance({ net, publicKey, wasmSha256Hex, maxPages = 4 } = {}) {
+  const FAIL = (state, error) => ({ state, error, contractId: null });
+  if (!publicKey || !wasmSha256Hex) return FAIL("GATED", "publicKey + wasmSha256Hex required");
+  const infra = INFRA[net];
+  if (!infra || !infra.horizon || !infra.rpc) return FAIL("GATED", "network has no horizon/rpc wire");
+  try {
+    const seen = new Set();
+    let url = `${infra.horizon}/accounts/${encodeURIComponent(publicKey)}/transactions?limit=100&order=desc`;
+    let pages = 0;
+    while (url && pages < maxPages) {
+      pages += 1;
+      const res = await fetch(url, { headers: { accept: "application/json" } });
+      if (!res.ok) return FAIL("WIRE_ERROR", `horizon account txs HTTP ${res.status}`);
+      const page = await res.json();
+      const records = (((page || {})._embedded || {}).records) || [];
+      const matches = [];
+      for (const rec of records) {
+        const hash = rec && rec.hash;
+        if (!hash || seen.has(hash)) continue;
+        seen.add(hash);
+        if (rec.successful !== true) continue; // failed txs never created anything
+        // Read the tx meta from the RPC wire, never from Horizon (whose
+        // /transactions record omits result_meta_xdr — measured).
+        const metaRes = await fetch(infra.rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTransaction", params: { hash } }) });
+        if (!metaRes.ok) continue;
+        const metaBody = await metaRes.json().catch(() => null);
+        const metaB64 = metaBody && metaBody.result && metaBody.result.resultMetaXdr;
+        if (typeof metaB64 !== "string") continue;
+        let meta = null;
+        try { meta = xdr.TransactionMeta.fromXDR(metaB64, "base64"); } catch { continue; }
+        const arm = meta && meta.type && meta[meta.type];
+        const opsMeta = arm && arm.operations;
+        if (!opsMeta) continue;
+        for (const om of opsMeta) {
+          let changes = [];
+          try { changes = typeof om.changes === "function" ? om.changes() : om.changes || []; } catch { changes = []; }
+          for (const change of changes) {
+            const kind = String(change && change.type);
+            const entry = kind === "ledgerEntryCreated" ? change.created : kind === "ledgerEntryUpdated" ? change.updated : null;
+            const data = entry && entry.data;
+            if (!data || data.type !== "contractData") continue;
+            const cd = data.contractData;
+            if (!cd || !cd.key || cd.key.type !== "scvLedgerKeyContractInstance") continue;
+            const cidHolder = cd.contract && cd.contract.contractId;
+            const raw = cidHolder && (cidHolder.value !== undefined ? cidHolder.value : cidHolder);
+            const bytes = raw instanceof Uint8Array ? Buffer.from(raw) : Buffer.isBuffer(raw) ? raw : null;
+            if (!bytes || bytes.length !== 32) continue;
+            const instV = cd.val;
+            const instance = instV && (instV.instance || (instV.contractInstance && instV.contractInstance) );
+            const exec = instance && instance.executable;
+            const exHash = exec && exec.wasmHash && (exec.wasmHash.value !== undefined ? exec.wasmHash.value : exec.wasmHash);
+            const exHex = exHash && (exHash instanceof Uint8Array || Buffer.isBuffer(exHash)) ? Buffer.from(exHash).toString("hex") : null;
+            if (!exHex) continue;
+            if (exHex !== wasmSha256Hex) continue; // different material — never our instance
+            matches.push({ contractId: StrKey.encodeContract(bytes), execWasmHashHex: exHex, lastModifiedLedgerSeq: entry.lastModifiedLedgerSeq || null, txHash: hash });
+          }
+        }
+      }
+      if (matches.length > 1) return FAIL("AMBIGUOUS", `${matches.length} instance entries match this executable — refusing to guess`);
+      if (matches.length === 1) {
+        const m0 = matches[0];
+        // Second identity proof: read the LIVE instance entry back from the RPC wire.
+        let bytes = null;
+        try { const d = StrKey.decodeContract(m0.contractId); bytes = Buffer.from(d); } catch { bytes = null; }
+        if (!bytes || bytes.length !== 32) return FAIL("WIRE_ERROR", "resolved contractId undecodable");
+        const liveKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+          contract: xdr.ScAddress.scAddressTypeContract(new xdr.ContractId(bytes)),
+          key: xdr.ScVal.scvLedgerKeyContractInstance(),
+          durability: xdr.ContractDataDurability.persistent,
+        })).toXDR("base64");
+        const liveRes = await fetch(infra.rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getLedgerEntries", params: { keys: [liveKey] } }) });
+        if (!liveRes.ok) return FAIL("WIRE_ERROR", `getLedgerEntries HTTP ${liveRes.status}`);
+        const liveBody = await liveRes.json().catch(() => null);
+        const entries = liveBody && liveBody.result && Array.isArray(liveBody.result.entries) ? liveBody.result.entries : [];
+        let liveExecHex = null;
+        let liveLast = null;
+        for (const ent of entries) {
+          try {
+            const row = xdr.LedgerEntryData.fromXDR(ent.xdr || ent.data, "base64");
+            const rowCd = row.contractData;
+            const rowInst = rowCd.val && (rowCd.val.instance || rowCd.val.contractInstance);
+            const rowEx = rowInst && rowInst.executable && rowInst.executable.wasmHash && rowInst.executable.wasmHash.value;
+            if (rowEx) { liveExecHex = Buffer.from(rowEx).toString("hex"); liveLast = ent.lastModifiedLedgerSeq || null; }
+          } catch { /* fallthrough */ }
+        }
+        if (liveExecHex !== wasmSha256Hex) return FAIL("WIRE_ERROR", `instance ${m0.contractId} not live with this executable (row exec ${liveExecHex || "undecodable"})`);
+        return { state: "RESOLVED", contractId: m0.contractId, execWasmHashHex: liveExecHex, lastModifiedLedgerSeq: liveLast || m0.lastModifiedLedgerSeq, source: `horizon-account-txs + rpc meta ${m0.txHash.slice(0, 12)}…` };
+      }
+      const link = (page || {})._links;
+      url = link && link.next && link.next.href ? link.next.href : null;
+    }
+    return FAIL("NOT_FOUND", `no successful tx of ${publicKey} created an instance with executable ${wasmSha256Hex.slice(0, 12)}… within ${maxPages} page(s)`);
+  } catch (e) {
+    return FAIL("WIRE_ERROR", (e && e.message) || String(e));
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -520,6 +810,100 @@ async function refusalProbe(rpcServer, built, probeName) {
   return { probe: probeName, state: "NOT_REFUSED", ok: false, error: "a probe that must refuse DID NOT refuse — fail-closed violation", submitted: false };
 }
 
+/**
+ * SDK 17.4 simulateTransaction returns the PARSED face — measured live keys
+ * `_parsed, id, latestLedger, events, transactionData, minResourceFee, result,
+ * stateChanges` — where `result` is the SINGULAR SimulateHostFunctionResult
+ * `{ auth, retval }` (api.d.ts 476/486; parsers.js coalesces the raw plural
+ * `results: RawSimulateHostFunctionResult[] { auth?: string[], xdr }` into it).
+ * The runner read `sim.results[0].retval`, which EXISTS on no live face, so
+ * every singular Parsed retval read null and the readback/idempotency
+ * invariants collapsed to UNDECODABLE/NOT_IDEMPOTENT (measured 2026-11-08).
+ * Fail-closed: the raw face is still honored as a fallback; neither face
+ * may silently decode to nothing.
+ */
+export function simResultFace(sim) {
+  if (!sim || typeof sim !== "object") return null;
+  if (sim.result && sim.result.retval !== undefined && sim.result.retval !== null) {
+    return { face: "parsed", retval: sim.result.retval, auth: Array.isArray(sim.result.auth) ? sim.result.auth : [] };
+  }
+  if (Array.isArray(sim.results) && sim.results.length > 0) {
+    const row = sim.results[0];
+    // Raw face retval is the base64 XDR STRING (decoder accepts it directly).
+    return { face: "raw", retval: row.xdr !== undefined && row.xdr !== null ? row.xdr : row.retval ?? null, auth: Array.isArray(row.auth) ? row.auth : [] };
+  }
+  return null;
+}
+
+/**
+ * SIMULATION-ONLY wrong-owner probe with the measured honest refusal shape:
+ * Soroban simulation auto-grants require_auth (record mode executes as if
+ * authorized), so "the sim must throw" is FALSE on the wire. The sim-only
+ * refusal proof is instead WHERE the recorded auth binds: commit_authorized
+ * calls require_auth on the OWNER argument, so the recorded credential is an
+ * ADDRESS credential naming the OWNER — regardless of who the tx source is.
+ * The attacker cannot produce that signature at submission (txBadAuth), so the
+ * attack is refused without submitting anything.
+ * Fail-closed: REFUSED ONLY IF at least one auth entry is recorded AND every
+ * entry is an ACCOUNT credential naming the OWNER; any source-account-style,
+ * attacker-named, contract-named or undecodable entry or an empty auth list is
+ * NOT_REFUSED.
+ */
+async function authBindingProbe(rpcServer, built, probeName, ownerPubkey, attackerPubkey) {
+  if (!built || built.state !== "BUILD_OK") {
+    return { probe: probeName, state: "BUILD_GATED", ok: false, error: built && built.error ? built.error : "no build returned" };
+  }
+  let sim;
+  try { sim = await rpcServer.simulateTransaction(built.tx); }
+  catch (e) { return { probe: probeName, state: "REFUSED", ok: true, error: `simulation threw: ${e && e.message}`, submitted: false }; }
+  if (sim && sim.error) {
+    const shapeOk = /Auth|Contract/.test(sim.error);
+    return { probe: probeName, state: "REFUSED", ok: shapeOk, shapeOk, error: sim.error, submitted: false };
+  }
+  const face = simResultFace(sim);
+  if (!face || !Array.isArray(face.auth) || face.auth.length === 0) {
+    return { probe: probeName, state: "NOT_REFUSED", ok: false, submitted: false, authEntries: [],
+      error: "sim succeeded with NO recorded auth entries — nothing binds the operation to the owner, so no refusal is proven" };
+  }
+  const detailOf = (entry) => {
+    let e = entry;
+    try {
+      if (typeof e === "string") e = xdr.SorobanAuthorizationEntry.fromXDR(e, "base64");
+    } catch (err) { return { kind: "UNDECODABLE", error: err && err.message }; }
+    try {
+      // Own props shadow prototype accessor methods on this SDK's per-arm
+      // classes (measured: "e.credentials is not a function") — callOrProp.
+      const cred = callOrProp(e, "credentials");
+      if (cred === null || cred === undefined) return { kind: "UNDECODABLE", error: "no credentials" };
+      const credArm = armOf(cred);
+      if (credArm === "sorobanCredentialsSourceAccount") return { kind: "SOURCE_ACCOUNT" };
+      if (credArm !== "sorobanCredentialsAddress" && credArm !== "sorobanCredentialsAddressV2") return { kind: `OTHER:${credArm}` };
+      // V2 wraps the address in addressV2; V1 keeps it on the credential itself.
+      const container = credArm === "sorobanCredentialsAddressV2" ? callOrProp(cred, "addressV2") : cred;
+      const addr = callOrProp(container, "address");
+      if (addr === null || addr === undefined) return { kind: "UNDECODABLE", error: "no address" };
+      const addrArm = armOf(addr);
+      if (addrArm === "scAddressTypeAccount") return { kind: "ACCOUNT", strkey: Address.fromScAddress(addr).toString() };
+      if (addrArm === "scAddressTypeContract") return { kind: "CONTRACT" };
+      return { kind: `OTHER:${addrArm}` };
+    } catch (err) { return { kind: "UNDECODABLE", error: err && err.message }; }
+  };
+  const authEntries = face.auth.map(detailOf);
+  // Empty strkey (undefined) can never equal ownerPubkey, so Other/undecodable
+  // shapes fail-closed through the same every() below without a special case.
+  const refused = authEntries.length > 0 && authEntries.every((d) => d.kind === "ACCOUNT" && d.strkey === ownerPubkey);
+  return {
+    probe: probeName,
+    state: refused ? "REFUSED" : "NOT_REFUSED",
+    ok: refused,
+    submitted: false,
+    authEntries,
+    criterion: "sim-only: require_auth recorded against the OWNER address only — the tx source cannot satisfy that credential (txBadAuth at submission); nothing was submitted",
+    ...(refused ? { note: `auth bound to the owner (${ownerPubkey.slice(0, 8)}…), source is the attacker (${attackerPubkey.slice(0, 8)}…)` }
+                : { error: "recorded auth is not bound to the owner only — fail-closed violation" }),
+  };
+}
+
 /** read_authorized simulation in one call (read-only; no sign/submit). */
 async function readbackSim(rpcServer, net, contractId, publicKey, fee, sequence, readTargetId) {
   if (!contractId) return { fn: "read_authorized", state: "SKIPPED", reason: "no contract id available" };
@@ -533,11 +917,12 @@ async function readbackSim(rpcServer, net, contractId, publicKey, fee, sequence,
   try { sim = await rpcServer.simulateTransaction(built.tx); }
   catch (e) { return { fn: "read_authorized", state: "SIM_ERROR", submitted: false, error: e && e.message }; }
   if (sim && sim.error) return { fn: "read_authorized", state: "SIM_ERROR", submitted: false, error: sim.error };
-  const dec = decodeAuthorizedAnchorScVal(sim && sim.results && sim.results[0] ? sim.results[0].retval : null);
+  const face = simResultFace(sim);
+  const dec = decodeAuthorizedAnchorScVal(face ? face.retval : null);
   return {
     fn: "read_authorized", state: dec.kind === "NONE" ? "SIMULATED_NONE" : dec.kind === "SOME" ? "SIMULATED_SOME" : "UNDECODABLE",
-    submitted: false, readTargetId,
-    decoded: dec.kind === "SOME" ? { hashHex: dec.hashHex, owner: dec.owner, seq: dec.seq } : dec,
+    submitted: false, readTargetId, simFace: face ? face.face : "none",
+    decoded: dec.kind === "SOME" ? { kind: "SOME", hashHex: dec.hashHex, owner: dec.owner, seq: dec.seq } : dec,
   };
 }
 
@@ -559,36 +944,40 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
     sequence: String(seqCounter.value), commitmentHash: KNOWN_VECTOR.hash,
     owner: publicKey, network: net, fee, ownerAuthorization: false,
   });
-  if (commit1.state !== "BUILD_OK") throw new Fail(`commit build gated: ${commit1.error}`);
+  if (commit1.state !== "BUILD_OK") throw new Fail(`commit build gated: ${commit1.error}`, []);
   seqCounter.value += 1n;
   steps.push(await sendAndPoll(rpcServer, net, commit1.tx, keypair, "commit_authorized(vector)"));
-  if (steps[steps.length - 1].state !== "INVOKED") throw new Fail("owner commit_authorized did not reach INVOKED");
+  if (steps[steps.length - 1].state !== "INVOKED") {
+    const s0 = steps[steps.length - 1];
+    throw new Fail(`owner commit_authorized did not reach INVOKED (state: ${s0.state}; diagnostic: ${s0.error || s0.horizonRaw ? JSON.stringify({ state: s0.state, error: s0.error || null, horizon: s0.horizonRaw || null, txHash: s0.hash || null }) : "none"})`, steps);
+  }
   // (2) Idempotent replay — same (owner, hash) returns the SAME ledger seq.
+  // Simulations consume NO on-chain sequence: only a LANDED tx advances seqCounter
+  // (bumping on sims built commit2 one slot ahead of the chain — the same
+  // txBAD_SEQ (-5) class as the create-resume release above).
   const rb1 = await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id);
-  seqCounter.value += 1n;
   const seqA = (rb1.decoded && rb1.decoded.seq) || null;
+  steps.push({ step: "readback(after-commit1)", ...rb1 });
   const commit2 = buildInvokeTx({
     contractId: cstr, functionName: "commit_authorized", source: publicKey,
     sequence: String(seqCounter.value), commitmentHash: KNOWN_VECTOR.hash,
     owner: publicKey, network: net, fee, ownerAuthorization: false,
   });
-  if (commit2.state !== "BUILD_OK") throw new Fail(`replay build gated: ${commit2.error}`);
+  if (commit2.state !== "BUILD_OK") throw new Fail(`replay build gated: ${commit2.error}`, steps);
   seqCounter.value += 1n;
   steps.push(await sendAndPoll(rpcServer, net, commit2.tx, keypair, "commit_authorized(replay)"));
   const rb2 = await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id);
-  seqCounter.value += 1n;
   const seqB = (rb2.decoded && rb2.decoded.seq) || null;
   steps.push({
     step: "commit_authorized(replay):idempotent",
     state: seqA !== null && seqA === seqB ? "IDEMPOTENT" : "NOT_IDEMPOTENT",
     ok: seqA !== null && seqA === seqB, ledgerSeq: seqB,
   });
-  steps.push({ step: "readback(after-replay)", ...(await readbackSim(rpcServer, net, contractId, publicKey, fee, seqCounter.value, KNOWN_VECTOR.id)) });
-  seqCounter.value += 1n;
+  steps.push({ step: "readback(after-replay)", ...rb2 });
   // (3) Wrong-owner probe: EPHEMERAL testnet-only key, never for mainnet.
   const attacker = Keypair.random();
   const attackerFund = await friendbotFund("testnet", attacker.publicKey());
-  const attackerProbe = await refusalProbe(
+  const attackerProbe = await authBindingProbe(
     rpcServer,
     buildInvokeTx({
       contractId: cstr, functionName: "commit_authorized", source: attacker.publicKey(),
@@ -596,6 +985,8 @@ async function runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fe
       network: net, fee, ownerAuthorization: false,
     }),
     "commit_authorized(wrong-owner)",
+    publicKey,
+    attacker.publicKey(),
   );
   steps.push({ step: "probe:commit_authorized(wrong-owner)", ...attackerProbe, fundState: attackerFund.state, ephemeralKeySubmission: false });
   // (4) Mismatch probe: correct id + wrong hash -> the contract must refuse.
@@ -683,6 +1074,15 @@ export async function main(argv) {
   catch (e) { console.error((e && e.message) || "wallet load failed"); return 1; }
   const { keypair, publicKey } = wallet;
 
+  let balStroops = null; // exact stroop-parsed preflight balance (null outside mainnet)
+  // The three MAINNET money-locals are hoisted to main() scope on purpose: the preflight
+  // block, the artifact-evidence block, the create-step gate re-base and the gate object
+  // itself must all read ONE binding, or a block-scoped shadow silently writes "null"
+  // money into the artifact (measured live 2026-11-10: a const-redeclaration of
+  // balStroops inside the preflight block did exactly that, then crashed ReferenceError
+  // on minBalanceStroops - zero submissions were wasted, which is the gate's own design).
+  let exactMin = null; // per-account exact minimum (null iff unreadable exceptions)
+  let minBalanceStroops = null; // the reserve the artifact carries and the gate enforces
   if (net === "mainnet") {
     const decisions = parseDecisionDoc(await readFile(join(ROOT, DECISIONS_DOC_REL), "utf8").catch(() => ""));
     const rehearsalArtifact = await readArtifactFile(ARTIFACT_OUT.testnet);
@@ -697,12 +1097,30 @@ export async function main(argv) {
       ...mainnetFeeViolations({ fee, rehearsalMaxFee: rmax }),
     ];
     if (all.length) { console.error(`MAINNET REFUSED (owner gates, fail-closed):\n  ${all.join("\n  ")}`); return 3; }
-    const bal = await nativeBalanceXlm(net, publicKey);
-    if (bal === null || Number(bal) < MAINNET_BALANCE_MIN_XLM) {
-      console.error(`BALANCE PREFLIGHT FAILED (read-only): native ${bal === null ? "(unavailable)" : bal} XLM for ${publicKey} — requires >= ${MAINNET_BALANCE_MIN_XLM} XLM`);
+    const meta = await nativeAccountMeta(net, publicKey);
+    const nativeXlm = meta === null ? null : meta.balance;
+    if (meta === null || Number(nativeXlm) < MAINNET_BALANCE_MIN_XLM) {
+      console.error(`BALANCE PREFLIGHT FAILED (read-only): native ${nativeXlm === null ? "(unavailable)" : nativeXlm} XLM for ${publicKey} — requires >= ${MAINNET_BALANCE_MIN_XLM} XLM`);
       return 7;
     }
-    console.log(`balance preflight (read-only): native ${bal} XLM`);
+    // Exact stroop parse (never float math on money) + the PER-ACCOUNT minimum balance the
+    // ledger will actually enforce (subentries raise it above the single-entry floor - the
+    // funded deployer carries a USDC trustline, so its exact minimum is 1.5 XLM, not 1.0).
+    // (NO `const` here - these ASSIGN the main()-scope bindings; a `const` redeclaration
+    // would shadow them block-locally and the evidence/gate blocks below would read null.)
+    balStroops = xlmStringToStroops(nativeXlm);
+    if (balStroops === null) {
+      console.error(`BALANCE PREFLIGHT FAILED (read-only): unreadable balance string ${JSON.stringify(nativeXlm)}`);
+      return 7;
+    }
+    exactMin = exactMinBalanceStroops({
+      baseReserveStroops: MAINNET_BASE_RESERVE_STROOPS,
+      subentryCount: meta.subentryCount,
+      numSponsored: meta.numSponsored,
+      numSponsoring: meta.numSponsoring,
+    });
+    minBalanceStroops = exactMin === null ? MAINNET_MIN_BALANCE_STROOPS : exactMin;
+    console.log(`balance preflight (read-only): native ${nativeXlm} XLM · subentries ${meta.subentryCount} · minimum balance ${minBalanceStroops} stroops (${exactMin === null ? "documented lower bound" : "exact for this account"})`);
     if (fee === null) { console.error("--fee <stroops> is required on mainnet (recorded fee policy)"); return 2; }
     MAINNET.decisions = decisions;
   }
@@ -724,13 +1142,35 @@ export async function main(argv) {
   artifact.fee.requested = net === "testnet" && artifact.fee.requested === null ? "1000000" : artifact.fee.requested;
   const fee = artifact.fee.requested;
 
+  // Solvency evidence + gate wiring: the exact read-only balance and the reserve the gate
+  // assumes travel IN the artifact, so any rejection carries its own arithmetic with it
+  // (the deployer identity is a public key; no secret material ever reaches the file).
+  // Re-bases only inside the run: the create step subtracts the upload's actually-charged
+  // fee before its own gate consult.
+  if (net === "mainnet") {
+    artifact.deployerBalanceStroops = String(balStroops);
+    artifact.minBalanceReserveStroops = String(minBalanceStroops);
+    artifact.minBalanceReserveFace = exactMin === null ? "DOCUMENTED_LOWER_BOUND" : "EXACT_PER_ACCOUNT";
+  }
+  const solvencyGate = net === "mainnet" ? { balanceStroops: balStroops, minReserveStroops: minBalanceStroops } : null;
+
   // (1) UPLOAD the deploy material.
   const up = buildUploadTx({ wasm: wasmBytes, source: publicKey, sequence: String(seqCounter.value), network: net, fee, ownerAuthorization: net === "mainnet" });
   if (up.state !== "BUILD_OK") { console.error(`upload build gated: ${up.error}`); return 2; }
   seqCounter.value += 1n;
-  const upRes = await sendAndPoll(rpcServer, net, up.tx, keypair, "upload(wasm)");
+  const upRes = await sendAndPoll(rpcServer, net, up.tx, keypair, "upload(wasm)", solvencyGate);
   artifact.steps.push(upRes);
-  if (upRes.state !== "INVOKED") { return saveFail(artifact, 5); }
+  if (upRes.state !== "INVOKED") {
+    if (upRes.rejectFace === "PRE_SEND_SOLVENCY") console.error("upload(wasm): fee solvency gate refused BEFORE any submission - fund the deployer to at least (declared fee + minimum balance) and re-run; the artifact records the exact arithmetic");
+    return saveFail(artifact, 5);
+  }
+  // The upload LANDED on-chain: its actually-charged fee has left the account, so the create
+  // step's solvency consult must consume the post-upload balance (actual charged fee = the
+  // real remaining truth; an unreadable/null feeCharged keeps the preflight snapshot and is
+  // noted, never guessed).
+  if (solvencyGate && upRes.feeCharged !== null && upRes.feeCharged !== undefined && safeStroopsBig(upRes.feeCharged) !== null) {
+    solvencyGate.balanceStroops = balStroops - safeStroopsBig(upRes.feeCharged);
+  }
 
   // (2) CREATE with the deterministic salt (same address on any retry).
   const cr = buildCreateContractTx({ source: publicKey, sequence: String(seqCounter.value), wasmHash: wasmSha256, network: net, salt: deriveSalt(publicKey, wasmSha256), fee, ownerAuthorization: net === "mainnet" });
@@ -738,14 +1178,22 @@ export async function main(argv) {
   seqCounter.value += 1n;
   let crRes = null;
   try {
-    crRes = await sendAndPoll(rpcServer, net, cr.tx, keypair, "createCustomContract");
+    crRes = await sendAndPoll(rpcServer, net, cr.tx, keypair, "createCustomContract", solvencyGate);
   } catch (e) {
     // Deterministic salt: an earlier attempt already created this exact instance (same deployer+salt+wasm).
     // Soroban refuses a fresh create with the same salt (HostError Storage/ExistingValue: "contract already
-    // exists") while the prior attempt already reached INVOKED — resume from the derived contract id
-    // (deterministic from deployer+wasm), never resubmit blindly.
+    // exists") while the prior attempt already reached INVOKED — this run has no result meta of its
+    // own; the resume path below resolves the REAL instance address from the wire. Never resubmit blindly.
     if (/already exists|ExistingValue/i.test(String((e && e.message) || e))) {
-      console.log(`createCustomContract: prior attempt already created this deterministic instance — resuming from the derived contract id (no re-submit)`);
+      // The ExistingValue throw surfaces from prepareTransaction's SIMULATION, which runs BEFORE
+      // sendTransaction — the tx never reached the wire, so it never landed and its reserved
+      // sequence slot is released here. Without this release every later build runs one slot
+      // ahead of the chain and dies at the RPC gate with txBAD_SEQ (result code -5, measured
+      // 2026-11-08 on the rehearsal's first commit: feeCharged 40674, errorResultXdr
+      // AAAAAAAAnuL////7AAAAAA==). Only a never-sent tx may release: an on-chain FAILED tx
+      // DID consume its slot, which is why sendAndPoll's FAILED branch keeps it.
+      if (seqCounter && typeof seqCounter.value === "bigint") seqCounter.value -= 1n;
+      console.log(`createCustomContract: prior attempt already created this deterministic instance — simulation refused pre-submit, sequence slot released; the exact address will be resolved from the wire (never resubmitted)`);
       crRes = { step: "createCustomContract", state: "INVOKED", resumedAfterExisting: true, error: String((e && e.message) || e) };
     } else { throw e; }
   }
@@ -759,8 +1207,21 @@ export async function main(argv) {
   if (crRes.state !== "INVOKED") { return saveFail(artifact, 5); }
   let contractId;
   if (crRes.resumedAfterExisting) {
-    const derived = deriveAuthorizedAnchorId({ owner: publicKey, hash: KNOWN_VECTOR.hash });
-    contractId = derived.state === "DERIVED" ? derived.id : null;
+    // Wire-only resolution — see "Resume path" preamble above. The known-answer
+    // vector id (owner+hash) is the IN-CONTRACT commit id (used later as the
+    // rehearsal read target), never a contract address; the instance address is
+    // a fact that must come from the ledger, so it is resolved + live-proven
+    // here or the run fails closed.
+    const resolved = await resolveExistingInstance({ net, publicKey, wasmSha256Hex: wasmSha256 });
+    if (resolved.state !== "RESOLVED" || !resolved.contractId) {
+      crRes.resumptionFailed = { state: resolved.state, error: resolved.error || null };
+      console.error(`resume resolution FAILED (${resolved.state}): ${resolved.error || "(no detail)"}`);
+      artifact.summary.verdict = `NOT_CONFIRMED — resume could not prove the existing instance on the wire (${resolved.state})`;
+      return saveFail(artifact, 5);
+    }
+    contractId = resolved.contractId;
+    crRes.resumedFrom = { contractId, execWasmHashHex: resolved.execWasmHashHex, lastModifiedLedgerSeq: resolved.lastModifiedLedgerSeq, source: resolved.source };
+    console.log(`resolveExistingInstance: RESOLVED ${contractId} (exec ${resolved.execWasmHashHex.slice(0, 12)}…, source ${resolved.source})`);
   } else {
     const parsed = parseContractIdFromCreateResult(crRes.metaB64);
     if (parsed.state !== "READ_OK") {
@@ -784,6 +1245,7 @@ export async function main(argv) {
     }
     try { artifact.rehearsal = await runRehearsal({ rpcServer, net, contractId, publicKey, keypair, fee, seqCounter }); }
     catch (e) {
+      if (e && Array.isArray(e.steps)) for (const s of e.steps) artifact.steps.push(s); // partial steps preserved — diagnostics never dropped
       artifact.steps.push({ step: "rehearsal", state: "FAILED", ok: false, error: (e && e.message) || "rehearsal failure" });
       return saveFail(artifact, 5);
     }
@@ -858,16 +1320,132 @@ export async function verifyMode(plan) {
   return 0;
 }
 
-async function nativeBalanceXlm(net, publicKey) {
+async function nativeAccountMeta(net, publicKey) {
   try {
     const res = await fetch(`${INFRA[net].horizon}/accounts/${publicKey}`);
     if (!res.ok) return null;
     const rec = await res.json();
     const native = ((rec.balances || []).find((b) => b.asset_type === "native") || {}).balance;
-    return native === undefined ? null : String(native);
+    if (native === undefined) return null;
+    return {
+      balance: String(native),
+      subentryCount: Number.isInteger(rec.subentry_count) ? rec.subentry_count : 0,
+      numSponsoring: Number.isInteger(rec.num_sponsoring) ? rec.num_sponsoring : 0,
+      numSponsored: Number.isInteger(rec.num_sponsored) ? rec.num_sponsored : 0,
+    };
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Coded rejection decode + fee solvency (pure, offline, test-bonded)  */
+/* ------------------------------------------------------------------ */
+
+function safeStroopsBig(v) {
+  if (v === null || v === undefined) return null;
+  try { const n = BigInt(v); return n < 0n ? null : n; } catch { return null; }
+}
+
+/**
+ * The per-account EXACT minimum balance for the ledger's fee-solvency rule in the plain
+ * (non-sponsoring, sponsorship-free) account shape:
+ *   minimum balance = base reserve x (2 + subentry count)
+ * every trustline/offer/data entry occupies one subentry slot (measured 2026-11-10: the
+ * funded deployer carries ONE USDC trustline from the signed swap cycle, so its exact
+ * minimum is 3 x 5,000,000 = 15,000,000 stroops, NOT the single-entry 10,000,000). Any
+ * sponsored shape shifts reserves between accounts under rules this runner does not claim
+ * to re-derive, so it returns null there and the caller keeps the documented LOWER bound
+ * constant - the wire, which knows the exact per-account truth, retains the final word.
+ */
+export function exactMinBalanceStroops({ baseReserveStroops, subentryCount, numSponsored = 0, numSponsoring = 0 } = {}) {
+  const base = safeStroopsBig(baseReserveStroops);
+  if (base === null || !Number.isInteger(subentryCount) || subentryCount < 0) return null;
+  if (numSponsored > 0 || numSponsoring > 0) return null;
+  return base * BigInt(2 + subentryCount);
+}
+
+/**
+ * Exact XLM-string to stroops conversion, never float math on money:
+ * "3.5069800" -> 35069800n; anything else (fraction beyond 7 digits, sign, junk) -> null.
+ * 7 digits is the ledger's own XLM precision, so shorter fractions pad with zeros.
+ */
+export function xlmStringToStroops(xlmString) {
+  // Fail-closed, not truncating: an input carrying MORE precision than the ledger's own
+  // 7-digit XLM scale must never be silently rounded (money math has no silence).
+  if (typeof xlmString !== "string" || xlmString.length === 0) return null;
+  const m = /^(\d+)(?:\.(\d*))?$/.exec(xlmString);
+  if (!m || (m[2] || "").length > 7) return null;
+  const frac = (m[2] || "").padEnd(7, "0");
+  return safeStroopsBig(`${m[1]}${frac}`);
+}
+
+// Result-code names built from the SDK's own TransactionResultCode schema enum - machine
+// truth, never a hand-maintained table: an earlier hand-ordered table decoded a real reject
+// into the wrong arm by positions (a -7 is txInsufficientBalance at feeCharged 130861110,
+// NOT a bad-seq/bad-auth arm as suspected before the bytes were decoded). Codes the SDK
+// schema does not name decode to name:null with the numeric code intact.
+const TX_RESULT_CODE_NAME_BY_VALUE = (() => {
+  const map = new Map();
+  try {
+    for (const [name, value] of Object.entries(xdr.TransactionResultCode.schema || {})) {
+      if (typeof value === "number") map.set(value, name);
+    }
+  } catch { /* absent schema keeps names null; codes still decode */ }
+  return map;
+})();
+
+/**
+ * Decode an errorResultXdr TransactionResult blob into its canonical result code and
+ * charged fee. sendTransaction REJECTS carry a bare result-code union arm with NO operation
+ * results, so the body-arm walk in diagnostic() cannot name them - this reads the same
+ * bytes flatly (feeCharged int64 + code int32) through the SDK enum. Fail-closed:
+ * {decodable:false} on any undecodable input (never an invented code).
+ */
+export function decodeTransactionResultCode(errorResultXdrB64) {
+  // Fail-closed on non-strings and empties (fromXDR(null) semantics are not a contract).
+  if (typeof errorResultXdrB64 !== "string" || errorResultXdrB64.length === 0) return { decodable: false };
+  let tr = null;
+  try { tr = xdr.TransactionResult.fromXDR(errorResultXdrB64, "base64"); } catch { return { decodable: false }; }
+  let codeValue = null;
+  let feeCharged = null;
+  try {
+    const flat = typeof tr.toXdrObject === "function" ? tr.toXdrObject() : null;
+    if (flat && flat.feeCharged !== undefined) feeCharged = String(flat.feeCharged);
+    if (flat && flat.result && flat.result.code !== undefined) codeValue = Number(flat.result.code);
+  } catch { /* fail-closed below */ }
+  if (!Number.isInteger(codeValue)) return { decodable: false, feeCharged };
+  return { decodable: true, code: codeValue, name: TX_RESULT_CODE_NAME_BY_VALUE.get(codeValue) || null, feeCharged };
+}
+
+/**
+ * The ledger's own fee-solvency rule, evaluated locally BEFORE any submission: a transaction
+ * whose declared fee would leave the account below its minimum balance is refused with
+ * txInsufficientBalance (-7, "fee would gobble minimum balance"). Detecting that locally
+ * yields a coded, zero-submission refusal instead of a blind wire reject (measured
+ * 2026-11-10 on the real mainnet upload(wasm): priced fee 130861110 stroops vs funded
+ * 35069800 stroops). minReserveStroops is the documented LOWER bound of the ledger's
+ * per-account minimum balance (MAINNET_MIN_BALANCE_STROOPS = 2 x base reserve); an account
+ * with subentries or trustlines owes more, so a gate pass here is never a ledger guarantee
+ * - it is this runner's strongest local verdict before the wire has its final word.
+ * Unreadable inputs refuse (REJECTED_PRESEND), never pass: fail-closed.
+ */
+export function evaluateFeeSolvency({ feeStroops, balanceStroops, minReserveStroops } = {}) {
+  const fee = safeStroopsBig(feeStroops);
+  const bal = safeStroopsBig(balanceStroops);
+  const res = safeStroopsBig(minReserveStroops);
+  if (fee === null || bal === null || res === null) {
+    return { state: "REJECTED_PRESEND", shortfallStroops: null, error: "fee solvency gate: unreadable fee/balance/reserve inputs - refusing fail-closed (nothing was submitted)" };
+  }
+  const headroom = bal - fee;
+  if (headroom < res) {
+    return {
+      state: "REJECTED_PRESEND",
+      shortfallStroops: String(res - headroom),
+      error: `PRE-SEND FEE SOLVENCY GATE (nothing was submitted): declared fee ${fee.toString()} stroops vs balance ${bal.toString()} stroops; paying it would leave ${headroom.toString()} < the ${res.toString()} stroop minimum balance, which is exactly the ledger's txInsufficientBalance refusal (code -7). Fund the deployer to at least ${(fee + res).toString()} stroops (declared fee + minimum balance), then re-run.`,
+    };
+  }
+  return { state: "ALLOWED", headroomStroops: String(headroom) };
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {

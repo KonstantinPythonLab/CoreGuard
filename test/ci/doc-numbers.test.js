@@ -52,6 +52,8 @@ const ALLOWED = new Set([
   "docs/FINAL-REPORT-2026-09-19.md",
   "docs/FINAL-REPORT-2026-11-07-ar.md", // hardening-batch final report, 2026-11-07 (SHA-pinned to ea7e154)
   "docs/FINAL-REPORT-2026-11-07.md", // hardening-batch final report, 2026-11-07 (SHA-pinned to ea7e154)
+  "docs/FINAL-REPORT-2026-11-09-ar.md", // authorized-lane delivery final report: the 2026-11-09 rehearsal + refusal facts, and the 2026-11-10 decode addendum (dated instrument; this push)
+  "docs/FINAL-REPORT-2026-11-09.md", // authorized-lane delivery final report, EN mirror (dated instrument; this push)
   "docs/OWNER-DECISIONS-2026-09-19.md",
   "docs/OWNER-DECISIONS-2026-11-08.md", // owner-authorized mainnet deploy decision, 2026-11-08 (the recorded instrument; the runner reads it, not the scanner)
   "docs/adoption/README.md",

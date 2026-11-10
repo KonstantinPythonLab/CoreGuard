@@ -1,0 +1,8 @@
+{
+  "runId": 42519059778,
+  "artifactName": "cg-commitment-anchor-wasm",
+  "wasmSha256": "65da850cc897762cabaa79f385b1896f5838d65abfb806332157900fce8c8257",
+  "headSha": "071862c82590d310d67688709e84e214274ebfd7",
+  "wasmBytes": 15919,
+  "note": "Phase 3 mainnet deploy-only gate material: artifact gh run download 42519059778 -n cg-commitment-anchor-wasm (built from headSha 071862c82590d310d67688709e84e214274ebfd7, the recorded HEAD lineage of PR branch reconcile/authorized-lane-green-state)."
+}
