@@ -1,91 +1,95 @@
-# CoreGuard Evidence Matrix
+# CoreGuard Evidence Matrix — three axes, never one word
 
-## Status Labels
-- **BUILT**: Code exists
-- **TESTNET VERIFIED**: Passed testnet tests
-- **MAINNET DEPLOYED**: Contract on mainnet
-- **MAINNET VERIFIED**: Real mainnet tests passed
-- **PRODUCTION ADOPTED**: Real external usage
+> **Why this file changed (2026-11-10).** It used to collapse executed Stellar
+> work into one combined verdict label, while `packages/stellar/README.md` said `DRY_RUN / NOT_BUILT`
+> and `status()` returned `integrationStatus: NOT_BUILT`. Both were true about
+> different questions, and the single label let a reader average them into "the
+> integration works". The three axes below cannot be averaged, and
+> `test/ci/surface-status.test.js` fails the build if a combined label returns.
+> Full record: [`STELLAR-STATUS-UNIFICATION.md`](STELLAR-STATUS-UNIFICATION.md).
+> Machine-readable registry: [`surface-status.json`](surface-status.json).
 
----
+## The three axes
 
-## CoreGuard Engine
+| Axis | The question it answers | Allowed values |
+|---|---|---|
+| **Code** | Does the surface exist in the committed tree? | `BUILT` · `BUILT_UNVERIFIED` · `PLAN_ONLY` · `NOT_BUILT` |
+| **Execution** | Has anything been run, with an artifact proving it? | `EXECUTED` · `REAL_BOOK_EXECUTED` · `POLICY_GATE_EXECUTED` · `TEST_EXECUTED` · `NONE` |
+| **Integration** | Can an outside project adopt it today? | `ADOPTED` · `PILOT` · `NOT_BUILT` |
 
-| Claim | Status | Evidence | Test |
-|---|---|---|---|
-| 1476 tests passing | BUILT | `npm test` | scripts/run-tests.mjs |
-| 1052 files scanned | BUILT | boundary-audit.mjs | 0 violations |
-| 10,000-run benchmark | BUILT | 0 false accept, 0 false reject | benchmarks/ |
-| 1,000/1,000 mutants refused | BUILT | mutation lab | test/ |
-| Intent-to-execution conformance | BUILT | checkConformance() | packages/stellar/dex-gating.mjs |
-| Deterministic replay | BUILT | replay() | scripts/ladder/verification-levels.mjs |
-| Fail-closed | BUILT | UNKNOWN → HELD | All packages |
-| Universal DApp Shield (wrap ANY action) | ARM-MODEL EXECUTED | docs/evidence/universal-dapp-shield-executed.json — 2 ALLOW · 2 REQUIRE_REVIEW · 1 DENY · 1 REFUSED (Q-FW10) | scripts/universal-shield-executed.mjs --verify |
-
----
-
-## Core DAO (Mainnet)
-
-| Claim | Status | Evidence | Test |
-|---|---|---|---|
-| V1 contract deployed | MAINNET DEPLOYED | 0x037dF08F2d43c5D03759279Fe35664f6AFf9EA6E | scripts/verify-live.json |
-| V2 contract deployed | MAINNET DEPLOYED | 0x66268a47e81b8f657798d7b5bbedc956df7b13fd | scripts/verify-live.json |
-| V2 commitIntent tx | MAINNET VERIFIED | 0x0cd2a8c0de1b030552da16052650ae3c1d74821c2dfa3a4b40afa18d7367715c | scripts/verify-live.json |
-| V2 anchorProof tx | MAINNET VERIFIED | 0x5b9e7d6806200d1f3603ebd0f759d224e3096951dfb6ecbf3539b8b6d3e478d2 | scripts/verify-live.json |
-| Cross-RPC verification | MAINNET VERIFIED | rpc.coredao.org + rpc.ankr.com | scripts/verify-live.json |
-
----
+**Rules the machine enforces.** `ADOPTED` and `PILOT` require a named external
+party plus committed evidence. `EXECUTED` never implies `ADOPTED`. `NONE` on the
+execution axis is a fact, not a failure. Today every surface is
+`integration=NOT_BUILT`: **no external project runs CoreGuard, and no customer
+has adopted it.**
 
 ## Stellar
 
-| Claim | Status | Evidence | Test |
-|---|---|---|---|
-| Soroban contract (testnet) | TESTNET VERIFIED | CCERTRITP7A6U4PQ7NUKHXKWL2BNRMSBLVAAAWWMRAZTICUN7ZGC5Q4R | test/integrations/stellar-soroban.test.mjs (11/11) |
-| Soroban contract (mainnet) | MAINNET DEPLOYED | CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP — third-party-listed (stellar.expert: creator = CoreGuard wallet, wasm hash recorded, 2026-11-04) | scripts/deploy-soroban-mainnet.mjs |
-| Soroban commitment-anchor commit CALL (mainnet) | MAINNET VERIFIED | `commit(proofId, commitment)` **INVOKED** — tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec`, ledger 65,337,373 — exact chainId-1116 pair (proofId `0xecd9e6b3d8780c55ca3d60e88b7ff79317b3cba187e43240a540891e4cada6b8` = commitment content `0xc0dbfb45b6c8e13b3738822360ea737adfc045d4acb808bdaeac563c8af31052`), owner-authorized, NO deploy touched; on-chain read-back `read(proofId)` = `{hash: 0xc0dbfb45…1052, seq: 65337373}` exact (wire-verified) | docs/evidence/stellar-soroban-commit-executed.json · scripts/stellar-soroban-commit-executed.mjs --verify · test/integrations/execution-evidence-contract.test.mjs |
-| First signed funded swap (mainnet) | MAINNET VERIFIED | DEX-GATE/1 preflight VERIFIED (both gates) → owner-signed `pathPaymentStrictSend` **CONFIRMED** — swap tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097`, ledger 65,338,112 (USDC trustline tx `09243337fd04d7ead8e369a8a5d5ef48648179db84608b262d5379f34fa72d76`, ledger 65,338,111); `4.0598146 XLM → 0.6306239 USDC` (0.1553331 USDC/XLM), destMin 0.6011661 cleared, wallet-bounded within the real-depth ceiling (179,564.966163 × 1%) — wire read-back equals `fee_charged` to the stroop | docs/evidence/stellar-dex-swap-executed.json · scripts/stellar-dex-swap-executed.mjs --verify · test/integrations/execution-evidence-contract.test.mjs |
-| Mainnet wallet | MAINNET VERIFIED | GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U — live Horizon account | Horizon read-back |
-| Mainnet payment | MAINNET VERIFIED | 0.1 XLM → SDF, ledger 65,308,317 | .stellar-tx-1.json |
-| Freighter wallet wrapper | BUILT | packages/stellar/freighter.mjs | No E2E test (credential-gated) |
-| Soroban DEX gating | REAL-BOOK EXECUTED | docs/evidence/stellar-dex-gate-executed.json — five verdicts against the REAL XLM/USDC mainnet order book (issuer network-discovered; depth-derived ceiling) | scripts/stellar-dex-gate-real.mjs --verify |
-| AI Agent Payment Gate | POLICY-GATE EXECUTED | docs/evidence/stellar-agent-gate-executed.json — VERIFIED/REJECTED/HELD matrix; submit NOT_PERFORMED (credential-gated) | scripts/stellar-agent-gate-executed.mjs --verify |
-| Intent-to-Execution Proof | BUILT | docs/INTENT-TO-EXECUTION-PROOF.md | 5 test cases |
+| Surface | Code | Execution | Integration | Evidence |
+|---|---|---|---|---|
+| `stellar-adapter` — read / build / submit gate | BUILT | NONE (no live call by design) | NOT_BUILT — no external consumer | `packages/stellar/index.mjs`; `status()` returns `DRY_RUN` / `NOT_BUILT` |
+| `stellar-soroban-anchor` — commitment anchor contract | BUILT (soroban-sdk 23) | EXECUTED — deploy + first `commit(proofId, commitment)` INVOKED, owner-authorized; contract `CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP`; tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec`, ledger 65,337,373 | NOT_BUILT — the caller is CoreGuard's own script | `docs/evidence/stellar-soroban-commit-executed.json`; `node scripts/stellar-soroban-commit-executed.mjs --verify` |
+| `stellar-dex-gate` — DEX-GATE/1 preflight | BUILT | REAL_BOOK_EXECUTED — five verdicts against the live XLM/USDC book; returns `PLAN_ONLY`, never sends | NOT_BUILT — no wallet or DApp embeds it | `docs/evidence/stellar-dex-gate-executed.json`; `node scripts/stellar-dex-gate-real.mjs --verify` |
+| `stellar-agent-gate` — STELLAR-AGENT/1 policy matrix | BUILT | POLICY_GATE_EXECUTED — VERIFIED / REJECTED / HELD executed offline; `submit: NOT_PERFORMED` | NOT_BUILT — no agent deployment uses it | `docs/evidence/stellar-agent-gate-executed.json`; `node scripts/stellar-agent-gate-executed.mjs --verify` |
+| `agent-gate` — AGENT-GATE/1 gate, receipts, independent verifier | BUILT | TEST_EXECUTED — 14-case walkthrough; receipt tamper and chain-break refusals | NOT_BUILT — prototype, no signer, no submission | `packages/agent-gate/index.mjs`; `test/integrations/agent-payment-gate.test.mjs` |
+| `stellar-freighter` — Freighter wallet wrapper | BUILT_UNVERIFIED — no end-to-end test | NONE — credential-gated, never exercised | NOT_BUILT | `packages/stellar/freighter.mjs` |
+| `stellar-mainnet-executor` — payment / invoke / anchor plans | PLAN_ONLY — returns `PLAN_OK` plus sample code | NONE | NOT_BUILT | `packages/stellar/mainnet-executor.mjs` |
+| Signed funded DEX swap (owner wallet, 2026-11-06) | BUILT (runner script) | EXECUTED — `pathPaymentStrictSend` CONFIRMED, tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097`, ledger 65,338,112; 4.0598146 XLM to 0.6306239 USDC, wire read-back equals `fee_charged` to the stroop | NOT_BUILT — a one-off owner execution, not a product path | `docs/evidence/stellar-dex-swap-executed.json`; `node scripts/stellar-dex-swap-executed.mjs --verify` |
+| Mainnet wallet and first payment | BUILT | EXECUTED — 0.1 XLM to SDF, ledger 65,308,317 | NOT_BUILT | `.stellar-tx-1.json` |
 
----
+**One sentence for the Stellar block:** the *execution* record is real and
+re-derivable; the *integration* record is empty. A judge can verify the former
+today and cannot adopt the latter today.
+
+## Core DAO (chainId 1116)
+
+| Surface | Code | Execution | Integration | Evidence |
+|---|---|---|---|---|
+| Anchor contract V1 | BUILT | EXECUTED — `0x037dF08F2d43c5D03759279Fe35664f6AFf9EA6E`, proof tx `0xe67c61fd...a9b8`, block 38712625 | NOT_BUILT — no external consumer | `scripts/verify-live.json` |
+| EvidenceRegistryV2 | BUILT | EXECUTED — `0x66268a47e81b8f657798d7b5bbedc956df7b13fd`; commitIntent `0x0cd2a8c0...715c`; anchorProof `0x5b9e7d68...78d2` | NOT_BUILT | `scripts/verify-live.json` |
+| EvidenceRegistryV3 (fee) | BUILT — `forge test` green | NONE — not deployed (owner-only decision) | NOT_BUILT | `contracts/EvidenceRegistryV3.sol` |
+| Cross-RPC independent read-back | BUILT | EXECUTED — coredao + ankr, 66/66 legs | NOT_BUILT | `evidence/gate-4.1-independent-verify.json` |
+| Gate 4.1 identity anchor | BUILT | EXECUTED — commitIntent `0x68d9fb...c567`, block 38827925, status `0x1`; governance signature still pending | NOT_BUILT | `evidence/gate-4.1-live-reconfirmation-2026-09-19.json` |
+
+## Engine and verification surfaces
+
+| Surface | Code | Execution | Integration | Evidence |
+|---|---|---|---|---|
+| `independent-verifier` — offline receipt verifier | BUILT | TEST_EXECUTED | NOT_BUILT — zero third-party runs | `packages/independent-verifier`; `test/independent-verifier/` |
+| C verifier (frozen reference) | BUILT | TEST_EXECUTED | NOT_BUILT | `test/verifier-c/` |
+| Universal DApp Shield (ARM model) | BUILT | POLICY_GATE_EXECUTED — 2 ALLOW, 2 REQUIRE_REVIEW, 1 DENY, 1 REFUSED | NOT_BUILT | `docs/evidence/universal-dapp-shield-executed.json` |
+| Claim registry CG-CL/1 | BUILT | TEST_EXECUTED — 28 claims, 16 VERIFIED, 0 violations | NOT_BUILT | `docs/claims-registry.json`; `npm run claims:audit` |
+| Release gate CG-RG/1 | BUILT | TEST_EXECUTED — 18/18 legs, self-audit in CI | NOT_BUILT | `docs/release-gate.json`; `npm run release:gate` |
+| Conformance report CG-CR/1 | BUILT | TEST_EXECUTED — `badgeIssuerCount 0`, revenue 0 | NOT_BUILT | `docs/conformance-report.json` |
 
 ## Pi Network
 
-| Claim | Status | Evidence | Test |
-|---|---|---|---|
-| Pi Network package | BUILT | packages/pi-network/index.mjs | No tests |
-| Pi SDK | BUILT | packages/pi-network/sdk.mjs | No tests |
-| Pi Killer | BUILT | packages/pi-killer/index.mjs | No tests |
-| Pi DApp shield | DRY_RUN | Plan only | No tests |
+| Surface | Code | Execution | Integration | Evidence |
+|---|---|---|---|---|
+| Pi payment flow (approve then complete) | BUILT | TEST_EXECUTED — fail-closed `503 payments_not_configured` without the server-side key | NOT_BUILT — no live payment, no developer-portal approval | `WEB-coreguard/src/routes/api/pi-approve.ts` |
+| Pi Sign-In (implicit flow) | BUILT | TEST_EXECUTED — `/api/pi-me` rejects an invalid bearer with 401 | NOT_BUILT — domain verification pending | `WEB-coreguard/src/routes/api/pi-me.ts` |
+| Pi packages | BUILT_UNVERIFIED | NONE | NOT_BUILT | `packages/pi-network`, `packages/pi-killer` |
 
----
+## Totals
 
-## SaaS Gateway
+Suite total: **1496 / 1496 pass**, machine-pinned in
+`docs/state-snapshot.json` (the only authoritative count in the repo).
+Boundary audit: **0 violations**; file count lives in the same snapshot.
 
-| Claim | Status | Evidence | Test |
-|---|---|---|---|
-| SaaS Gateway | BUILT | packages/saas-gateway/index.mjs | No tests |
-| SaaS Live Payment | BUILT | packages/saas-gateway/live.mjs | No tests |
-| x402 integration | BUILT | packages/x402/index.mjs | test/ |
-
----
-
-## Summary
-
-| Status | Count |
+| Integration status | Count |
 |---|---|
-| MAINNET VERIFIED | 9 |
-| MAINNET DEPLOYED | 3 |
-| TESTNET VERIFIED | 1 |
-| BUILT | 15 |
-| REAL-BOOK EXECUTED | 1 |
-| POLICY-GATE EXECUTED | 1 |
-| ARM-MODEL EXECUTED | 1 |
-| DRY_RUN | 1 |
-| NOT DEPLOYED | 0 |
+| ADOPTED | **0** |
+| PILOT | **0** |
+| NOT_BUILT | **all surfaces** |
 
-**Total: 32 components, 9 mainnet verified, 3 mainnet-deployed contracts, 3 executed gate surfaces + 1 executed signed funded swap, 1 dry-run, 0 not deployed**
+| Execution status | Count |
+|---|---|
+| EXECUTED (on-chain artifacts) | 6 |
+| REAL_BOOK_EXECUTED / POLICY_GATE_EXECUTED | 3 |
+| TEST_EXECUTED | 9 |
+| NONE / not exercised | 5 |
+
+**The sentence this matrix exists to make impossible:** "CoreGuard is a verified
+Stellar integration." The supported sentences are: "CoreGuard has verifiable
+execution evidence on Stellar mainnet" (true, checkable) and "CoreGuard has no
+external Stellar adopter yet" (true, and it is the gap the roadmap closes).

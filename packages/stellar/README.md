@@ -2,6 +2,14 @@
 
 Honest status: **DRY_RUN / NOT_BUILT**. No secret key, no live submission, no funds movement.
 
+> **Why this line and `docs/EVIDENCE-MATRIX.md` no longer contradict each other.**
+> Both were always true about different questions, and the repo now states them
+> on three separate axes: `code` (this adapter is BUILT), `execution` (owner-run
+> scripts have executed mainnet calls, with committed artifacts) and
+> `integration` (**NOT_BUILT** — no external consumer, no customer).
+> See [`docs/STELLAR-STATUS-UNIFICATION.md`](../../docs/STELLAR-STATUS-UNIFICATION.md)
+> and the machine-readable registry `docs/surface-status.json`.
+
 ## What this is
 
 A deterministic, fail-closed adapter for the Stellar network (Horizon REST API):

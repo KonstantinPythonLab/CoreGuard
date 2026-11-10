@@ -1,0 +1,129 @@
+{
+  "schema": "coreguard.surface-status/1",
+  "updated": "2026-11-10",
+  "why": "One registry so that 'code exists', 'something was executed once' and 'an external project can adopt this' can never be averaged into a single flattering word.",
+  "axes": {
+    "code": ["BUILT", "BUILT_UNVERIFIED", "PLAN_ONLY", "NOT_BUILT"],
+    "execution": ["EXECUTED", "REAL_BOOK_EXECUTED", "POLICY_GATE_EXECUTED", "TEST_EXECUTED", "NONE"],
+    "integration": ["ADOPTED", "PILOT", "NOT_BUILT"]
+  },
+  "rules": [
+    "integration=ADOPTED requires a named external project running the surface, with evidence committed.",
+    "integration=PILOT requires a named external partner and a committed pilot record; a plan is not a pilot.",
+    "execution=EXECUTED means a committed artifact proves the call happened; it says nothing about adoptability.",
+    "code=BUILT_UNVERIFIED means the file exists but no test or executed artifact covers it.",
+    "No single combined label may replace these three axes anywhere in docs/."
+  ],
+  "surfaces": [
+    {
+      "id": "stellar-adapter",
+      "label": "Stellar integration adapter (read / build / submit gate)",
+      "path": "packages/stellar/index.mjs",
+      "code": "BUILT",
+      "execution": "NONE",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": [],
+      "note": "Reads Horizon and builds intents; submission only through an injected submitter. No live integration, no customer."
+    },
+    {
+      "id": "stellar-soroban-anchor",
+      "label": "Soroban commitment anchor (contract + first commit call)",
+      "path": "soroban/commitment-anchor",
+      "code": "BUILT",
+      "execution": "EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["docs/evidence/stellar-soroban-commit-executed.json"],
+      "note": "Deployed to Stellar mainnet and commit() INVOKED by the owner's own script. No external project calls it."
+    },
+    {
+      "id": "stellar-dex-gate",
+      "label": "DEX gating against the real order book (DEX-GATE/1)",
+      "path": "packages/stellar/dex-gating.mjs",
+      "code": "BUILT",
+      "execution": "REAL_BOOK_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["docs/evidence/stellar-dex-gate-executed.json"],
+      "note": "Five verdicts computed against the live XLM/USDC book. Returns PLAN_ONLY; it never sends."
+    },
+    {
+      "id": "stellar-agent-gate",
+      "label": "Agent payment gate, policy matrix (STELLAR-AGENT/1)",
+      "path": "packages/stellar-agent/index.mjs",
+      "code": "BUILT",
+      "execution": "POLICY_GATE_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["docs/evidence/stellar-agent-gate-executed.json"],
+      "note": "VERIFIED / REJECTED / HELD matrix executed offline; submit NOT_PERFORMED (credential-gated)."
+    },
+    {
+      "id": "agent-gate",
+      "label": "Agent payment gate + signed receipts + independent verifier (AGENT-GATE/1)",
+      "path": "packages/agent-gate/index.mjs",
+      "code": "BUILT",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": [],
+      "note": "The flagship surface: refuses an envelope that diverges from the authorized intent, including a batched second payment. No signer, no submission, no chain read."
+    },
+    {
+      "id": "stellar-freighter",
+      "label": "Freighter wallet wrapper",
+      "path": "packages/stellar/freighter.mjs",
+      "code": "BUILT_UNVERIFIED",
+      "execution": "NONE",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": [],
+      "note": "No end-to-end test: there is no browser wallet in CI and no credential path. Credential-gated, not proven."
+    },
+    {
+      "id": "stellar-mainnet-executor",
+      "label": "Mainnet executor (payment / invoke / anchor)",
+      "path": "packages/stellar/mainnet-executor.mjs",
+      "code": "PLAN_ONLY",
+      "execution": "NONE",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": [],
+      "note": "Returns PLAN_OK plus sample code. It is a planning surface, correctly labelled PLAN_ONLY."
+    },
+    {
+      "id": "independent-verifier",
+      "label": "Independent receipt verifier (offline, no CoreGuard server)",
+      "path": "packages/independent-verifier",
+      "code": "BUILT",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": [],
+      "note": "Verifies committed evidence packages; adoption by a third party is 0."
+    },
+    {
+      "id": "agentic-escrow-adapter",
+      "label": "Agentic escrow arbitration adapter",
+      "path": "packages/agentic-escrow-arbitration",
+      "code": "BUILT",
+      "execution": "NONE",
+      "integration": "NOT_BUILT",
+      "matrixRow": false,
+      "evidence": [],
+      "note": "DRY_RUN / NOT_BUILT by design; structurally unable to claim a live call."
+    },
+    {
+      "id": "peoples-court-adapter",
+      "label": "People's Court attestation adapter",
+      "path": "packages/peoples-court-adapter",
+      "code": "BUILT",
+      "execution": "NONE",
+      "integration": "NOT_BUILT",
+      "matrixRow": false,
+      "evidence": [],
+      "note": "Fail-closed intake only. A read-only review is not an integration, an endorsement or adoption."
+    }
+  ]
+}

@@ -65,6 +65,7 @@ const ALLOWED = new Set([
   "docs/owner-decisions-and-claimable-facts-2026-09.md",
   "docs/phase-a-people-court-followup-draft-2026-09-25.md",
   "docs/plan-90d-repo.md",
+  "docs/SCF-46-INTEREST-FORM-READY-2026-11-06.md", // dated instrument: answers prepared 2026-11-06 for the 2026-11-09 deadline; the total it cites was the measured one at its own date
   "docs/scf-evidence-packet-2026-10.md",
   "docs/scf-evidence-packet-ar-2026-10.md",
 ]);
