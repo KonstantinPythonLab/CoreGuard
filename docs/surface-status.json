@@ -148,6 +148,17 @@
       "note": "2000 samples recorded. In-process only: not deployed latency, not chain confirmation, not throughput."
     },
     {
+      "id": "agent-gate-browser-demo",
+      "label": "Runnable browser demo (gate → wallet → conformance → receipt)",
+      "path": "examples/agent-gate-browser",
+      "code": "BUILT",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["test/integrations/agent-gate-browser-demo.test.mjs", "examples/agent-gate-browser/index.html"],
+      "note": "A judge runs the local server and drives the loop in a browser. The page probes window.freighterApi and window.stellar.freighter, and when neither exists it says a local demo keypair signed rather than claiming a wallet. Nothing is submitted to a ledger."
+    },
+    {
       "id": "agentic-escrow-adapter",
       "label": "Agentic escrow arbitration adapter",
       "path": "packages/agentic-escrow-arbitration",

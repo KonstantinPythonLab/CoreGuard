@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AGENT-GATE/1 — بوابة الدفع في المتصفح</title>
+<style>
+  :root { color-scheme: light dark; --ok:#0a7f4b; --bad:#b3261e; --hold:#9a6a00; --muted:#666; }
+  body { font: 15px/1.6 system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; padding: 24px; max-width: 900px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .card { border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 10px; padding: 14px; margin: 0 0 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); background: color-mix(in srgb, currentColor 6%, transparent); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .verdict { font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+  .ALLOW, .VERIFIED { color: var(--ok); }
+  .MISMATCH, .TAMPERED, .REFUSED, .DENY { color: var(--bad); }
+  .HOLD, .UNKNOWN, .NOT_PERFORMED { color: var(--hold); }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 12.5px; margin: 8px 0 0; }
+  .wallet { display: inline-block; font-size: 13px; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  footer { color: var(--muted); font-size: 13px; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); padding-top: 10px; }
+  code { font-size: 12.5px; }
+</style>
+</head>
+<body>
+<h1>AGENT-GATE/1 — البوابة على مغلف موقّع فعليًا</h1>
+<p class="sub">A gate decision, the envelope your wallet signs, conformance on that exact envelope, and an Ed25519 receipt — in one session. / قرار البوابة، ثم المغلف الذي توقّعه محفظتك، ثم المطابقة، ثم إيصال مستقل.</p>
+
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <span id="walletBadge" class="wallet">جارٍ فحص المحفظة…</span>
+    <span id="stepBadge" class="verdict">—</span>
+  </div>
+  <div class="row">
+    <button id="btnPrepare">1) جهّز المغلف · Prepare</button>
+    <button id="btnSign" disabled>2) وقّع · Sign</button>
+    <button id="btnTamper" disabled>3) اختبر التحايل · Tamper</button>
+    <button id="btnDone" disabled>4) تحقق · Verify</button>
+  </div>
+  <pre id="out">—</pre>
+</div>
+
+<div class="card" id="receiptCard" hidden>
+  <strong>الإيصال · receipt</strong>
+  <div id="receiptBody"></div>
+</div>
+
+<footer id="ceiling">
+  الحد المعلن: البوابة والمطابقة والتحقق حقيقية، لكن هذا العرض <strong>لا يُرسل</strong> أي معاملة إلى الشبكة.
+  إن لم تكن إضافة Freighter مثبتة، فالتوقيع يأتي من مفتاح تجريبي محلي، والصفحة تقول ذلك بدلًا من الادعاء.
+  <br />
+  Ceiling: the gate, conformance and verification are real; nothing is submitted. If the extension is absent, the
+  signature comes from a local demo keypair, and the page states it.
+</footer>
+
+<script type="module">
+  const api = window.freighterApi || window.stellar?.freighter || null;
+  const walletBadge = document.getElementById("walletBadge");
+  const stepBadge = document.getElementById("stepBadge");
+  const out = document.getElementById("out");
+  const receiptCard = document.getElementById("receiptCard");
+  const receiptBody = document.getElementById("receiptBody");
+  const btn = {
+    prepare: document.getElementById("btnPrepare"),
+    sign: document.getElementById("btnSign"),
+    tamper: document.getElementById("btnTamper"),
+    done: document.getElementById("btnDone"),
+  };
+
+  let state = { xdr: null, txHash: null, signedXdr: null, signer: null };
+
+  function show(value) {
+    out.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  }
+  function setStep(text, cls) {
+    stepBadge.textContent = text;
+    stepBadge.className = `verdict ${cls}`;
+  }
+
+  // The wallet probe is the honest part: no extension, no claim.
+  if (api && typeof api.signTransaction === "function") {
+    walletBadge.textContent = "Freighter متاح — التوقيع داخل المحفظة";
+  } else {
+    walletBadge.textContent = "Freighter غير مثبت — التوقيع بمفتاح تجريبي محلي (يُعلَن)";
+  }
+
+  async function post(path, body = {}) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    return { status: response.status, data };
+  }
+
+  btn.prepare.onclick = async () => {
+    receiptCard.hidden = true;
+    setStep("…", "");
+    let source = null;
+    if (api && typeof api.getPublicKey === "function") {
+      try {
+        source = await api.getPublicKey();
+      } catch (e) {
+        source = null;
+        show({ wallet: "getPublicKey refused", error: String(e && e.message ? e.message : e) });
+      }
+    }
+    const { data } = await post("/api/prepare", { source, extensionPresent: Boolean(api) });
+    state = { xdr: data.xdr, txHash: data.txHash, signedXdr: null, signer: null };
+    setStep(`gate: ${data.decision.verdict}`, data.decision.verdict);
+    show({
+      gate: { verdict: data.decision.verdict, reasons: data.decision.reasons },
+      envelope: { txHash: data.txHash, source: data.intent.source, destination: data.intent.destination, amount: data.intent.amount },
+      walletKind: data.walletKind,
+    });
+    btn.sign.disabled = !data.xdr;
+    btn.tamper.disabled = !data.xdr;
+    btn.done.disabled = true;
+  };
+
+  btn.sign.onclick = async () => {
+    setStep("…", "");
+    if (api && typeof api.signTransaction === "function") {
+      try {
+        const accountToSign = (await api.getPublicKey?.()) ?? undefined;
+        const returned = await api.signTransaction(state.xdr, { network: "TESTNET", accountToSign });
+        state.signedXdr = typeof returned === "string" ? returned : (returned?.signedTxXdr ?? returned?.signedXDR ?? returned?.xdr);
+        state.signer = "freighter-extension";
+      } catch (e) {
+        // A refused popup is NOT a signature. Say so and stop.
+        setStep("wallet refused", "REFUSED");
+        show({ signer: "freighter-extension", state: "REFUSED", error: String(e && e.message ? e.message : e) });
+        return;
+      }
+    } else {
+      const { data } = await post("/api/demo-sign", {});
+      state.signedXdr = data.signedXdr;
+      state.signer = data.signer;
+    }
+    setStep(`signed by ${state.signer}`, "ALLOW");
+    show({ signer: state.signer, txHash: state.txHash, note: "the envelope now leaves the wallet as bytes; the gate never saw a key" });
+    btn.done.disabled = false;
+  };
+
+  btn.tamper.onclick = async () => {
+    const { data } = await post("/api/tamper", {});
+    state.signedXdr = data.signedXdr;
+    state.signer = "local-demo-keypair (deliberately wrong amount)";
+    setStep("tampered envelope ready", "MISMATCH");
+    show({ amount: data.amount, note: data.note, txHash: state.txHash });
+    btn.done.disabled = false;
+  };
+
+  btn.done.onclick = async () => {
+    setStep("…", "");
+    const { status, data } = await post("/api/complete", { signedXdr: state.signedXdr });
+    setStep(`${data.state ?? "REFUSED"}`, data.state ?? "REFUSED");
+    show(data);
+    if (data.receiptId) {
+      receiptCard.hidden = false;
+      receiptBody.innerHTML =
+        `<div>receipt <code>${data.receiptId}</code></div>` +
+        `<div>verification: <span class="verdict ${data.receiptStatus}">${data.receiptStatus}</span></div>` +
+        `<div>conformance: <span class="verdict ${data.conformance.verdict}">${data.conformance.verdict}</span></div>` +
+        (data.conformance.mismatches?.length
+          ? `<pre>${JSON.stringify(data.conformance.mismatches, null, 2)}</pre>`
+          : "");
+    }
+    if (status !== 200) setStep(data.state ?? "MISMATCH", "MISMATCH");
+  };
+</script>
+</body>
+</html>

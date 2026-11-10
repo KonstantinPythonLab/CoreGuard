@@ -36,6 +36,7 @@ has adopted it.**
 | `agent-gate-freighter` — wallet signing adapter | BUILT_UNVERIFIED — a real Freighter extension has still never signed here; it was probed in the available browser and is not installed (`window.freighter` undefined) | TEST_EXECUTED — signed / empty / unsigned / swapped-bytes cases against an injected wallet, plus a chain-accepted signature carried through this adapter by a local keypair behind its interface | NOT_BUILT | `packages/agent-gate/adapters/freighter.mjs`; `docs/evidence/agent-gate-testnet-signature.json` |
 | `agent-gate-verify-cli` — third-party verifier | BUILT | TEST_EXECUTED — exit 0/2/3/4 proven, including a receipt paired with a foreign envelope | NOT_BUILT — zero external users | `packages/agent-gate/verify-cli.mjs` |
 | `agent-gate-bench` — in-process timing | BUILT | TEST_EXECUTED — 2000 samples, p50/p95 recorded; offline ceiling stated | NOT_BUILT | `docs/evidence/agent-gate-bench.json` |
+| `agent-gate-browser-demo` — runnable page: gate → wallet → conformance → receipt | BUILT | TEST_EXECUTED — prepare / sign / verify driven over HTTP in the contract, a one-stroop tamper refused by name, junk REFUSED | NOT_BUILT — nothing is submitted, and the page states that a missing extension means a local keypair signed | `test/integrations/agent-gate-browser-demo.test.mjs`; `node examples/agent-gate-browser/serve.mjs` |
 | `stellar-freighter` — Freighter wallet wrapper | BUILT_UNVERIFIED — no end-to-end test | NONE — credential-gated, never exercised | NOT_BUILT | `packages/stellar/freighter.mjs` |
 | `stellar-mainnet-executor` — payment / invoke / anchor plans | PLAN_ONLY — returns `PLAN_OK` plus sample code | NONE | NOT_BUILT | `packages/stellar/mainnet-executor.mjs` |
 | Signed funded DEX swap (owner wallet, 2026-11-06) | BUILT (runner script) | EXECUTED — `pathPaymentStrictSend` CONFIRMED, tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097`, ledger 65,338,112; 4.0598146 XLM to 0.6306239 USDC, wire read-back equals `fee_charged` to the stroop | NOT_BUILT — a one-off owner execution, not a product path | `docs/evidence/stellar-dex-swap-executed.json`; `node scripts/stellar-dex-swap-executed.mjs --verify` |
@@ -76,7 +77,7 @@ today and cannot adopt the latter today.
 
 ## Totals
 
-Suite total: **1503 / 1503 pass**, machine-pinned in
+Suite total: **1508 / 1508 pass**, machine-pinned in
 `docs/state-snapshot.json` (the only authoritative count in the repo).
 Boundary audit: **0 violations**; file count lives in the same snapshot.
 

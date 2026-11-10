@@ -189,11 +189,12 @@ so: **a real extension is not exercised here.**
 
 The gate becomes adoptable only when all four exist:
 
-1. **Freighter signing path** — the interface, the refusal cases and a real
-   testnet signature already exist; what is missing is the *extension*: the
-   envelope signed inside the user's browser wallet and returned, with the gate
-   never seeing a key. Deliverable: a browser demo a judge can run, showing
-   ALLOW and MISMATCH in the same session.
+1. **Freighter signing path** — the interface, the refusal cases, a real testnet
+   signature and the runnable demo (`node examples/agent-gate-browser/serve.mjs`,
+   which shows ALLOW and MISMATCH in one session) already exist. What is missing
+   is the *extension*: the envelope signed inside the user's browser wallet and
+   returned, with the gate never seeing a key. The demo holds that slot open and
+   states which signer ran.
 2. **Measured performance** — p50/p95 gate latency and cost per verification,
    published with the machine that produced them.
 3. **One external pilot** — a Soroban DApp or wallet that calls the gate in its

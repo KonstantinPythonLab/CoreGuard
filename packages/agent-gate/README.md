@@ -76,6 +76,13 @@ unknown field · honest envelope · drifted envelope · batched envelope · rece
 tamper · chain break). Exit 1 if the verdict matrix drifts, so the demo doubles
 as a self-check.
 
+The browser loop lives in `examples/agent-gate-browser/`:
+`node examples/agent-gate-browser/serve.mjs`, then open the printed URL. The page
+prepares an authorized envelope, signs it through `window.freighterApi` when the
+extension is present and with a labelled local keypair when it is not, then
+shows conformance `VERIFIED` and a one-stroop tamper refused by name. Nothing is
+submitted, and the page prints that ceiling next to the result.
+
 ```bash
 node packages/agent-gate/demo/cli-flow.mjs
 ```
