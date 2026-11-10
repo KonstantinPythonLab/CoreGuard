@@ -1,6 +1,6 @@
 # Final Report — Closing the Authorized-Lane Delivery: Rehearsal Passed, Mainnet Refusal Now Carries Its CODED Root Cause
 
-**Final status:** the authorized-lane delivery cycle closes at commit `f2d921f9748259b01e650e797bd6a42ab056eb07` — the testnet rehearsal passed end-to-end; the mainnet run correctly refused at the upload step (exit 5) under full owner authorization; and on **2026-11-10** the refusal was DECODED from its own committed bytes (`stellar-sdk` schema enum, no hand-built tables) to `txInsufficientBalance` (-7) — deterministic, not transient — and the runner was upgraded so the same failure now refuses locally BEFORE any submission. The full suite is green at **1472 / 1472**.
+**Final status:** the authorized-lane delivery cycle closes at commit `f2d921f9748259b01e650e797bd6a42ab056eb07` — the testnet rehearsal passed end-to-end; the mainnet run correctly refused at the upload step (exit 5) under full owner authorization; and on **2026-11-10** the refusal was DECODED from its own committed bytes (`stellar-sdk` schema enum, no hand-built tables) to `txInsufficientBalance` (-7) — deterministic, not transient — and the runner was upgraded so the same failure now refuses locally BEFORE any submission. The full suite is green at **1476 / 1476**.
 
 ## Cycle summary
 
@@ -32,8 +32,8 @@
 
 | Surface | Value |
 |---|---|
-| Test suite | **1472 / 1472 pass** — pinned in snapshot, enforced by runner (+4 measured 2026-11-10 → 1472; the 2026-11-09 facts above were measured at 1468) |
-| Boundary audit | **1077 files · 0 violations** |
+| Test suite | **1476 / 1476 pass** — pinned in snapshot, enforced by runner (+4 measured 2026-11-10 → 1476; the 2026-11-09 facts above were measured at 1468) |
+| Boundary audit | **1080 files · 0 violations** |
 | Docs-node contract | **120 executed · 79 skip-listed · 25 docs covered** |
 | Claims audit (CG-CL/1) | **PASS** |
 
@@ -55,6 +55,13 @@
 - No mainnet signing, broadcast, or new deployment beyond the recorded decision marker (Phase 3 ran under the recorded authorization and was refused BY THE NETWORK at the upload step — a priced fee, not a bypass, and now locally pre-checked).
 - The owner wallet held 1.5069800 XLM at the first preflight and 3.5069800 XLM at the final execution; the ≥ 2 XLM policy floor was satisfied while the fee-solvency requirement (14.5861110 XLM for this account) was not — the two gates are different and both are now coded and enforced.
 
+## Phase-5 live verification addendum (2026-11-10)
+
+- **Phase 5 executed and returned `LIVE-VERIFIED`:** the post-deploy live proof (`scripts/stellar-soroban-deploy-live-verify.mjs --network mainnet --owner-authorized`) exited 0 against the executed Phase-3 artifact and wrote `docs/evidence/stellar-soroban-deploy-live-verify-2026-11-10.json` with the verdict `MAINNET AUTHORIZED-LANE DEPLOY LIVE-VERIFIED (create proven from its own result meta; fresh-vault readback SIMULATED_NONE; balance arithmetic exact to the stroop)`.
+- The `create` leg resolved (ledger `65408001`; `contractIdParsed` == the recorded `CAZ3LQEMB37KICXEANKVMRNWMB5MD3O4FBC5GORB7QVUJE2WCPAHQPZB`), the fresh-vault readback decoded the empty lane as `SIMULATED_NONE` (`scvVoid` face), and the balance arithmetic was exact to the stroop (195,069,800 − 113,791,963 − 178,113 = 81,099,724 stroops == live balance).
+- The Phase-3 first-attempt artifact was archived REJECTED (`docs/evidence/stellar-soroban-deploy-first-attempt-rejected-2026-11-10.json`, sha256 `cc5516…`) under the coded root cause (`txInsufficientBalance` (-7) at feeCharged 130,861,110).
+- The owner-funded wallet (`GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U`) held 16 XLM at execution; the full suite is now **1476 / 1476 pass** and the boundary audit **1080 files · 0 violations** (snapshot `docs/state-snapshot.json` re-pinned in the same push).
+
 ## As-landed honesty note
 
-> Every value in this report is a dated fact: the rehearsal, refusal, and artifact composition were measured on `f2d921f9748259b01e650e797bd6a42ab056eb07` (2026-11-09, suite total 1468 at that moment); the decode, solvency gate, exact per-account minimum, and suite total 1472 are the 2026-11-10 push's measured truths (snapshot re-pinned in the SAME push). The live value of every number at any later moment is always `docs/STATUS.md` + `docs/state-snapshot.json` (CI-bonded). This file's Arabic original `docs/FINAL-REPORT-2026-11-09-ar.md` carries the same facts fact-for-fact.
+> Every value in this report is a dated fact: the rehearsal, refusal, and artifact composition were measured on `f2d921f9748259b01e650e797bd6a42ab056eb07` (2026-11-09, suite total 1468 at that moment); the decode, solvency gate, exact per-account minimum, and suite total 1476 are the 2026-11-10 push's measured truths (snapshot re-pinned in the SAME push; the Phase-5 live proof of the executed deploy returned LIVE-VERIFIED — create proven from its own result meta, fresh-vault readback SIMULATED_NONE, balance arithmetic exact to the stroop). The live value of every number at any later moment is always `docs/STATUS.md` + `docs/state-snapshot.json` (CI-bonded). This file's Arabic original `docs/FINAL-REPORT-2026-11-09-ar.md` carries the same facts fact-for-fact.

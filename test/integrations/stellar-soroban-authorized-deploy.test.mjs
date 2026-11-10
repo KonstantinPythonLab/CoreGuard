@@ -180,10 +180,19 @@ test("readback decoder: the typed-sim scvMap face (soroban-testnet measured 2026
   assert.equal(deploy.decodeAuthorizedAnchorScVal(partial).kind, "UNDECODABLE", "a map missing any of the three fields stays fail-closed");
 });
 
+test("decodeAuthorizedAnchorScVal: the EMPTY lane decodes on the typed-sim scvBool face AND the live mainnet scvVoid face; junk stays UNDECODABLE", () => {
+  // Typed-sim face (soroban-testnet, 2026-11-08): the absent lane serialized as Option::None -> scvBool(false).
+  assert.deepEqual(deploy.decodeAuthorizedAnchorScVal(xdr.ScVal.scvBool(false)), { kind: "NONE" });
+  // Live mainnet face (2026-11-10): the FRESH instance vault lane serialized scvVoid (read before
+  // commit); same semantic empty lane, now recognized — a present anchor never rides the Void arm.
+  assert.deepEqual(deploy.decodeAuthorizedAnchorScVal(xdr.ScVal.scvVoid()), { kind: "NONE" });
+  assert.equal(deploy.decodeAuthorizedAnchorScVal("AAAAAA==").kind, "UNDECODABLE", "junk never invents a lane");
+});
+
 /* ---------------- authorized-lane rejection decode + fee solvency ---------------- */
 
-test("committed mainnet artifact: REJECTED upload(wasm) decodes txInsufficientBalance from its OWN bytes (fresh-clone-reproducible Phase-3 root cause)", async () => {
-  const artifact = JSON.parse(await readFile(join(ROOT, "docs/evidence/stellar-soroban-authorized-deploy.json"), "utf8"));
+test("committed mainnet artifact: REJECTED upload(wasm) decodes txInsufficientBalance from its OWN bytes (fresh-clone-reproducible Phase-3 root cause), first live attempt 2026-11-10T15:44Z", async () => {
+  const artifact = JSON.parse(await readFile(join(ROOT, "docs/evidence/stellar-soroban-deploy-first-attempt-rejected-2026-11-10.json"), "utf8"));
   assert.equal(artifact.steps.length, 1);
   const step = artifact.steps[0];
   assert.equal(step.step, "upload(wasm)");
@@ -201,6 +210,49 @@ test("committed mainnet artifact: REJECTED upload(wasm) decodes txInsufficientBa
   // + simulation-priced resource fee (129,861,110) = the charged fee. WASM upload is priced
   // by the network, so the fix is funding, never a lower --fee.
   assert.equal(BigInt(decoded.feeCharged) - BigInt(artifact.fee.requested), 129861110n);
+});
+
+test("executed mainnet artifact (2026-11-10 live deploy): upload+create both INVOKED with real hashes/fees, exact-min money face, honest NOT_CONFIRMED summary, digest recomputes", async () => {
+  const artifact = JSON.parse(await readFile(join(ROOT, "docs/evidence/stellar-soroban-authorized-deploy.json"), "utf8"));
+  assert.equal(artifact.laneWrites, "NONE");
+  assert.equal(artifact.summary.deployed, false, "the deploy run could not confirm the vault -> honest false, never rewritten");
+  assert.ok(String(artifact.summary.verdict).includes("NOT_CONFIRMED"), "the run's preserved fail-closed verdict must travel (the scvVoid fix landed after this recorded execution)");
+  assert.equal(artifact.steps.length, 2);
+  const [up, cr] = artifact.steps;
+  assert.equal(up.step, "upload(wasm)");
+  assert.equal(up.state, "INVOKED");
+  assert.ok(/^95d5e9488c6dfcd61940e6f6f275c8781de8f98085660837765bb764a4318647$/.test(up.hash));
+  assert.equal(up.ledger, 65408000);
+  assert.equal(up.feeCharged, 113791963);
+  assert.equal(cr.step, "createCustomContract");
+  assert.equal(cr.state, "INVOKED");
+  assert.ok(/^db53545d9e0f67600ce7a94a936dbad5a3bd28da305280f67a161dd5436c1a04$/.test(cr.hash));
+  assert.equal(cr.ledger, 65408001);
+  assert.equal(cr.feeCharged, 178113);
+  assert.equal(artifact.summary.contractId, "CAZ3LQEMB37KICXEANKVMRNWMB5MD3O4FBC5GORB7QVUJE2WCPAHQPZB");
+  assert.equal(artifact.deployerBalanceStroops, "195069800");
+  assert.equal(artifact.minBalanceReserveStroops, "15000000");
+  assert.equal(artifact.minBalanceReserveFace, "EXACT_PER_ACCOUNT");
+  assert.equal((BigInt(artifact.deployerBalanceStroops) - BigInt(up.feeCharged) - BigInt(cr.feeCharged)).toString(), "81099724");
+  const { generatedAt, evidenceDigest, ...rest } = artifact;
+  assert.equal(deploy.digestStable(rest), artifact.evidenceDigest);
+});
+
+test("phase-5 live-verify source contract: public-surface only, owner+mainnet scope, sim-only readback, fail-closed names, refusal artifact path", async () => {
+  const source = await readFile(join(ROOT, "scripts", "stellar-soroban-deploy-live-verify.mjs"), "utf8");
+  assert.equal(source.includes(".stellar-wallet.json"), false, "the phase-5 proof never reads wallet secrets");
+  assert.equal(source.includes("loadWallet"), false, "the phase-5 proof has no wallet surface");
+  assert.equal(source.includes("sendTransaction"), false, "the phase-5 readback is simulation-only");
+  assert.equal(source.includes("submitTransaction"), false, "the phase-5 proof never submits");
+  assert.equal(source.includes("signTransaction"), false, "the phase-5 proof never signs");
+  assert.equal(source.includes("sendAndPoll"), false, "the phase-5 proof uses raw public-RPC post, not the runner's send lane");
+  assert.equal(source.includes("simulateTransaction"), true, "the single read surface is a simulation");
+  assert.ok(source.includes("--wasm-path"), "deploy-scope material stays outside the phase-5 surface");
+  assert.ok(source.includes("--owner-authorized is required"), "the owner-scoped usage gate stays pinned");
+  const failNames = ["ARTIFACT_MISSING", "DIGEST_MISMATCH", "DEPLOY_NOT_HONEST", "CREATE_TX_MISMATCH", "READBACK_NOT_EMPTY", "BALANCE_ARITHMETIC"];
+  for (const n of failNames) assert.ok(source.includes(n), `fail-closed name ${n} must stay pinned`);
+  assert.ok(source.includes("LIVE-VERIFY REFUSED"), "the fail-closed refusal path must stay pinned");
+  assert.ok(source.includes("docs/evidence/stellar-soroban-deploy-live-verify-2026-11-10.json"), "the dated live-proof artifact path must stay pinned");
 });
 
 test("decode fail-closed: junk never invents a code, and the rehearsal's measured txBadSeq blob still names itself", () => {
@@ -260,6 +312,28 @@ test("source contract: the solvency consult precedes EVERY submission, and artif
   const mutant = source.replace("if (solvencyGate)", "if (false)");
   assert.notEqual(mutant, source, "the mutation must actually apply");
   assert.equal(mutant.indexOf("if (solvencyGate)"), -1, "the scanner is anchored to the exact consult literal, not a substring coincidence");
+});
+
+test("binding-hoist contract: the three mainnet money-locals are declared ONCE at main() scope - a const shadow inside a nested block silently writes null money (measured live 2026-11-10)", async () => {
+  const source = await readFile(join(ROOT, RUNNER_REL), "utf8");
+  // Live defect this closes: `const balStroops = ...` inside the preflight block shadowed
+  // main()'s `let balStroops = null`, so the artifact-evidence block read the OUTER null
+  // (String(null) would record "null" as money) and then crashed ReferenceError on
+  // minBalanceStroops. The gates fired BEFORE any submission - zero mainnet sends wasted -
+  // and the crash turned the silent wrongness into a loud stop. The contract: these three
+  // bindings are declared exactly once (the hoisted lets) and every later use reads them.
+  const shadowRe = /^[ \t]*const[ \t]+(?:balStroops|exactMin|minBalanceStroops)\b/gm;
+  const shadowed = [...source.matchAll(shadowRe)].map((m) => m[0].trim());
+  assert.deepEqual(
+    shadowed,
+    [],
+    `a block-scoped const shadow of a hoisted money binding is the null-money defect exactly: ${shadowed.join(" | ")}`,
+  );
+  // The control must be proved real: plant the shadow text and watch the same scan see it.
+  const planted = source.replace("let balStroops = null;", "let balStroops = null;\n  const balStroops = 0n;"); // text-level twin of the live shadow
+  assert.notEqual(planted, source, "the mutation must actually apply (a fake control proves nothing)");
+  const seen = [...planted.matchAll(shadowRe)].map((m) => m[0].trim());
+  assert.ok(seen.some((s) => s.includes("balStroops")), "the planted shadow must be visible to the very same scan (apply AND bite)");
 });
 
 function makeStrkey(prefix) {

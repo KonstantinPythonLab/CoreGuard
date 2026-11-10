@@ -53,7 +53,7 @@ Stellar agent marketplaces, DEXs, and A2A rails need this exact surface, and Ste
 
 ## 8. Traction / progress (all machine-measured, 2026-11-06)
 
-- **Test suite:** 1472 / 1472 pass (state snapshot: `docs/state-snapshot.json`; suite-total enforcement bites on drift).
+- **Test suite:** 1476 / 1476 pass (state snapshot: `docs/state-snapshot.json`; suite-total enforcement bites on drift).
 - **Boundary:** 1052 tracked files with 0 violations.
 - **Core DAO mainnet:** 2 contracts deployed and verified; 2 MAINNET VERIFIED transactions (see `scripts/verify-live.json`: commitIntent tx 0x0cd2a8…715c, anchorProof tx 0x5b9e7d…78d2).
 - **Stellar mainnet anchor:** contract `CCKA2GYVILX7YZVSXGVIHOPNLTRBBF2SSWKBTQBIE7M67N5N2QMMXPSP` deployed 2026-11-04 (stellar.expert-listed); first anchor CALL INVOKED 2026-11-06 — tx `69044807410f65027c1227f4e525ad83f23a6cb1a2bb79790d82849c5dbc9fec`, ledger 65,337,373, on-chain read-back exact.

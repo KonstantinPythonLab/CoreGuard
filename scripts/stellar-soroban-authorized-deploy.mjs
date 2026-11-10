@@ -487,7 +487,12 @@ export function decodeAuthorizedAnchorScVal(rv) {
   }
   if (!val || typeof val !== "object") return { kind: "UNDECODABLE" };
   const arm = armOf(val);
-  if (arm === "scvBool") return { kind: "NONE" }; // soroban Option::None
+  if (arm === "scvBool") return { kind: "NONE" }; // soroban Option::None (typed-sim face measured 2026-11-08)
+  // FRESH-INSTANCE face (live mainnet 2026-11-10, readTargetId 0xb5f9655d… on the
+  // deployed commitment-anchor): an anchor ABSENT lane serializes scvVoid, not
+  // scvBool(false). Both faces are the same semantic lane (no anchor yet); anything
+  // else keeps the fail-closed UNDECODABLE — a present anchor is never shaped like Void.
+  if (arm === "scvVoid") return { kind: "NONE" };
   // Typed-sim truth (soroban-testnet live sim 2026-11-08): the host serializes
   // the AuthorizedAnchor contracttype as a scvMap keyed by symbols —
   // {hash: scvBytes 32B, owner: scvAddress(account), seq: scvU32} — the 3-field
@@ -817,7 +822,7 @@ async function refusalProbe(rpcServer, built, probeName) {
  * Fail-closed: the raw face is still honored as a fallback; neither face
  * may silently decode to nothing.
  */
-function simResultFace(sim) {
+export function simResultFace(sim) {
   if (!sim || typeof sim !== "object") return null;
   if (sim.result && sim.result.retval !== undefined && sim.result.retval !== null) {
     return { face: "parsed", retval: sim.result.retval, auth: Array.isArray(sim.result.auth) ? sim.result.auth : [] };
@@ -1070,6 +1075,14 @@ export async function main(argv) {
   const { keypair, publicKey } = wallet;
 
   let balStroops = null; // exact stroop-parsed preflight balance (null outside mainnet)
+  // The three MAINNET money-locals are hoisted to main() scope on purpose: the preflight
+  // block, the artifact-evidence block, the create-step gate re-base and the gate object
+  // itself must all read ONE binding, or a block-scoped shadow silently writes "null"
+  // money into the artifact (measured live 2026-11-10: a const-redeclaration of
+  // balStroops inside the preflight block did exactly that, then crashed ReferenceError
+  // on minBalanceStroops - zero submissions were wasted, which is the gate's own design).
+  let exactMin = null; // per-account exact minimum (null iff unreadable exceptions)
+  let minBalanceStroops = null; // the reserve the artifact carries and the gate enforces
   if (net === "mainnet") {
     const decisions = parseDecisionDoc(await readFile(join(ROOT, DECISIONS_DOC_REL), "utf8").catch(() => ""));
     const rehearsalArtifact = await readArtifactFile(ARTIFACT_OUT.testnet);
@@ -1093,18 +1106,20 @@ export async function main(argv) {
     // Exact stroop parse (never float math on money) + the PER-ACCOUNT minimum balance the
     // ledger will actually enforce (subentries raise it above the single-entry floor - the
     // funded deployer carries a USDC trustline, so its exact minimum is 1.5 XLM, not 1.0).
-    const balStroops = xlmStringToStroops(nativeXlm);
+    // (NO `const` here - these ASSIGN the main()-scope bindings; a `const` redeclaration
+    // would shadow them block-locally and the evidence/gate blocks below would read null.)
+    balStroops = xlmStringToStroops(nativeXlm);
     if (balStroops === null) {
       console.error(`BALANCE PREFLIGHT FAILED (read-only): unreadable balance string ${JSON.stringify(nativeXlm)}`);
       return 7;
     }
-    const exactMin = exactMinBalanceStroops({
+    exactMin = exactMinBalanceStroops({
       baseReserveStroops: MAINNET_BASE_RESERVE_STROOPS,
       subentryCount: meta.subentryCount,
       numSponsored: meta.numSponsored,
       numSponsoring: meta.numSponsoring,
     });
-    const minBalanceStroops = exactMin === null ? MAINNET_MIN_BALANCE_STROOPS : exactMin;
+    minBalanceStroops = exactMin === null ? MAINNET_MIN_BALANCE_STROOPS : exactMin;
     console.log(`balance preflight (read-only): native ${nativeXlm} XLM · subentries ${meta.subentryCount} · minimum balance ${minBalanceStroops} stroops (${exactMin === null ? "documented lower bound" : "exact for this account"})`);
     if (fee === null) { console.error("--fee <stroops> is required on mainnet (recorded fee policy)"); return 2; }
     MAINNET.decisions = decisions;

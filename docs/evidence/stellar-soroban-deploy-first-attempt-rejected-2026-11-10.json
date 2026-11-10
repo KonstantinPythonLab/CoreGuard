@@ -1,0 +1,41 @@
+{
+  "schema": "CoreGuard-Evidence/1",
+  "artifact": "stellar-soroban-authorized-deploy",
+  "version": "SOROBAN-AUTHORIZED-DEPLOY/1",
+  "executedBy": "scripts/stellar-soroban-authorized-deploy.mjs",
+  "network": "stellar-mainnet",
+  "decisionDoc": "docs/OWNER-DECISIONS-2026-11-08.md",
+  "decisionMarker": "DECISION-AUTHORIZED-DEPLOY-2026-11-08",
+  "ownerAuthorized": true,
+  "walletFile": ".stellar-wallet.json",
+  "deployer": "GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U",
+  "laneWrites": "NONE",
+  "contractSource": "soroban/commitment-anchor (no constructor)",
+  "wasm": {
+    "sha256": "65da850cc897762cabaa79f385b1896f5838d65abfb806332157900fce8c8257",
+    "bytes": 15919,
+    "artifactName": "cg-commitment-anchor-wasm",
+    "runId": 42519059778,
+    "headSha": "071862c82590d310d67688709e84e214274ebfd7"
+  },
+  "saltPolicy": "deterministic sha256(deployer : wasmSha256) — packages/stellar-soroban deriveSalt",
+  "saltHex": "904f8341205e4c5e36266d7fbc53dfeda42de72d4c99a822618e3dd75cd81db0",
+  "fee": {
+    "requested": "1000000",
+    "policy": ">= 1000000 stroops and >= 1.5x rehearsal max when a rehearsal artifact exists"
+  },
+  "steps": [
+    {
+      "step": "upload(wasm)",
+      "state": "REJECTED",
+      "error": "{\"status\":\"ERROR\",\"hash\":\"a6f340eab45c9e0666c9af4d1adc7005d11000c152ec5861f24cba90c686e89d\",\"errorResultXdr\":\"AAAAAAfMyDb////5AAAAAA==\",\"resultCode\":null,\"operationResults\":[]}"
+    }
+  ],
+  "rehearsal": null,
+  "readback": null,
+  "summary": {
+    "contractId": null,
+    "deployed": false,
+    "verdict": "MAINNET AUTHORIZED-LANE DEPLOY EXECUTED — VERIFIED (deploy-only per the recorded owner decision; NO mainnet lane write)"
+  }
+}
