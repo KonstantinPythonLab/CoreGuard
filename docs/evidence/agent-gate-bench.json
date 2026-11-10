@@ -1,0 +1,45 @@
+{
+  "schema": "CoreGuard-Evidence/1",
+  "artifact": "agent-gate-bench",
+  "version": "AGENT-GATE/1",
+  "iterations": 2000,
+  "operations": {
+    "evaluate": {
+      "samples": 2000,
+      "p50_us": 15,
+      "p95_us": 51,
+      "p99_us": 220,
+      "max_us": 3457
+    },
+    "conformance": {
+      "samples": 2000,
+      "p50_us": 2,
+      "p95_us": 8,
+      "p99_us": 18,
+      "max_us": 338
+    },
+    "issueReceipt": {
+      "samples": 2000,
+      "p50_us": 276,
+      "p95_us": 744,
+      "p99_us": 1463,
+      "max_us": 9683
+    },
+    "verifyReceipt": {
+      "samples": 2000,
+      "p50_us": 317,
+      "p95_us": 850,
+      "p99_us": 1533,
+      "max_us": 3320
+    }
+  },
+  "machine": {
+    "node": "v24.18.0",
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpus": 12
+  },
+  "ceiling": "In-process, single-threaded, offline. Not a deployed-service latency, not chain confirmation, not throughput.",
+  "generatedAt": "2026-11-10T21:24:12.465Z"
+}

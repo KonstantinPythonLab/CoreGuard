@@ -40,6 +40,12 @@ browser a reviewer can open.
 **Deliverables a reviewer runs:** the demo URL, the SDK example, the drill
 outputs (rejected signature, wrong network, expired mandate, tampered receipt).
 
+**Progress at 2026-11-10 (the part that does not need a browser):** built and
+tested — envelope builder/decoder (`AGENT-XDR/1`), the Freighter adapter contract
+with the swapped-bytes refusal, the verifier CLI with 0/2/3/4 exit codes, and
+measured p50/p95 for the four operations. **Still open:** a real Freighter
+extension signing in a browser session, and the SDK packaging in week 4.
+
 **Explicit non-goals:** no mainnet funds, no new chain, no new standard, no new
 product line.
 

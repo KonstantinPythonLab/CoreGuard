@@ -47,7 +47,7 @@ Record: `docs/STELLAR-STATUS-UNIFICATION.md`.
 | F1 | Code and docs contradict each other on Stellar status | P0 | three-axis registry + EVIDENCE-MATRIX rewrite + guard test | **closed** |
 | F2 | Portfolio too wide; no clear flagship | P0 | `docs/PRODUCT-FOCUS.md`; one flagship (`AGENT-GATE/1`), supporting set, parked list | **closed as a decision** |
 | F3 | Test volume is presented as integration readiness | P0 | axes separated everywhere; `integration: NOT_BUILT` asserted in the guard | **closed** |
-| F4 | No proof that tested policies govern the transaction actually signed and sent | P0 | `packages/agent-gate`: intent digest + envelope conformance, refuses drift and a batched second payment, receipt re-verified offline | **prototype built and tested; wallet signing NOT_BUILT** |
+| F4 | No proof that tested policies govern the transaction actually signed and sent | P0 | `packages/agent-gate`: conformance runs on the **decoded signed XDR**; refuses drift, a batched second payment, a fee-bump, and a wallet returning different bytes; verifier CLI with 0/2/3/4 exit codes; measured p50 15 µs gate / 317 µs verification | **built and tested offline; a real Freighter extension has NOT signed here (no browser wallet in CI), and nothing is submitted** |
 | F5 | No external adoption | P1 | stated as `ADOPTED: 0` in the matrix; pilot is Phase 2 of the roadmap, before polishing | **open** |
 | F6 | No independent audit | P1 | stated as `NOT_PERFORMED`; budgeted in Tranche 2 with a published-findings requirement | **open** |
 | F7 | A funding ask not justified line by line | P1 | `docs/SCF-BUILD-APPLICATION-V2.md`: tranche gates, judge-testable artifact per deliverable | **drafted** |

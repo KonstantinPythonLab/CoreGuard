@@ -32,6 +32,10 @@ has adopted it.**
 | `stellar-dex-gate` — DEX-GATE/1 preflight | BUILT | REAL_BOOK_EXECUTED — five verdicts against the live XLM/USDC book; returns `PLAN_ONLY`, never sends | NOT_BUILT — no wallet or DApp embeds it | `docs/evidence/stellar-dex-gate-executed.json`; `node scripts/stellar-dex-gate-real.mjs --verify` |
 | `stellar-agent-gate` — STELLAR-AGENT/1 policy matrix | BUILT | POLICY_GATE_EXECUTED — VERIFIED / REJECTED / HELD executed offline; `submit: NOT_PERFORMED` | NOT_BUILT — no agent deployment uses it | `docs/evidence/stellar-agent-gate-executed.json`; `node scripts/stellar-agent-gate-executed.mjs --verify` |
 | `agent-gate` — AGENT-GATE/1 gate, receipts, independent verifier | BUILT | TEST_EXECUTED — 14-case walkthrough; receipt tamper and chain-break refusals | NOT_BUILT — prototype, no signer, no submission | `packages/agent-gate/index.mjs`; `test/integrations/agent-payment-gate.test.mjs` |
+| `agent-gate-xdr` — builds unsigned, decodes signed envelopes | BUILT | TEST_EXECUTED — signed testnet XDR decoded; secret key, fee-bump and junk refused; testnet hash differs from mainnet | NOT_BUILT — no external embedder | `test/integrations/agent-gate-envelope.test.mjs` |
+| `agent-gate-freighter` — wallet signing adapter | BUILT_UNVERIFIED — a real extension has never signed here | TEST_EXECUTED — signed, empty, unsigned and swapped-bytes cases against an injected wallet | NOT_BUILT | `packages/agent-gate/adapters/freighter.mjs` |
+| `agent-gate-verify-cli` — third-party verifier | BUILT | TEST_EXECUTED — exit 0/2/3/4 proven, including a receipt paired with a foreign envelope | NOT_BUILT — zero external users | `packages/agent-gate/verify-cli.mjs` |
+| `agent-gate-bench` — in-process timing | BUILT | TEST_EXECUTED — 2000 samples, p50/p95 recorded; offline ceiling stated | NOT_BUILT | `docs/evidence/agent-gate-bench.json` |
 | `stellar-freighter` — Freighter wallet wrapper | BUILT_UNVERIFIED — no end-to-end test | NONE — credential-gated, never exercised | NOT_BUILT | `packages/stellar/freighter.mjs` |
 | `stellar-mainnet-executor` — payment / invoke / anchor plans | PLAN_ONLY — returns `PLAN_OK` plus sample code | NONE | NOT_BUILT | `packages/stellar/mainnet-executor.mjs` |
 | Signed funded DEX swap (owner wallet, 2026-11-06) | BUILT (runner script) | EXECUTED — `pathPaymentStrictSend` CONFIRMED, tx `ac2a7990b3387aab96b197c0c921d57756bd25d65ad0e75b93561ded640b9097`, ledger 65,338,112; 4.0598146 XLM to 0.6306239 USDC, wire read-back equals `fee_charged` to the stroop | NOT_BUILT — a one-off owner execution, not a product path | `docs/evidence/stellar-dex-swap-executed.json`; `node scripts/stellar-dex-swap-executed.mjs --verify` |
@@ -72,7 +76,7 @@ today and cannot adopt the latter today.
 
 ## Totals
 
-Suite total: **1496 / 1496 pass**, machine-pinned in
+Suite total: **1503 / 1503 pass**, machine-pinned in
 `docs/state-snapshot.json` (the only authoritative count in the repo).
 Boundary audit: **0 violations**; file count lives in the same snapshot.
 

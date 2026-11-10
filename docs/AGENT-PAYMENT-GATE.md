@@ -74,7 +74,69 @@ ledger read, not an audit, and not a statement about funds.
 | Independent audit | **NOT_PERFORMED** |
 | Latency/cost benchmark of the gate itself | **NOT_MEASURED** |
 
-## 5. Run it
+## 5. The signed envelope, not the proposal
+
+Step 6 used to be tested against a hand-written execution object. It now runs on
+what a wallet actually signs:
+
+1. `buildPaymentEnvelope()` builds an **unsigned** envelope — it refuses a
+   secret key and demands a sequence rather than inventing one.
+2. `requestSignature()` hands that XDR to a Freighter-shaped wallet and reads
+   back signed bytes. The gate never holds a key.
+3. `decodeEnvelope()` turns the signed XDR into operations: payments and their
+   memo are read; any other operation is carried as `unsupported` and refused by
+   conformance rather than ignored.
+4. `checkConformance()` compares those operations to the authorized intent.
+5. `issueReceipt()` records the decision and the signed envelope;
+   `verifyReceipt()` / `verify-cli.mjs` recompute both later.
+
+| Case | Result |
+|---|---|
+| Wallet returns a **different** transaction than the prepared one | `REFUSED` — compared by transaction hash |
+| Wallet returns nothing, or an unsigned envelope | `REFUSED` |
+| Envelope carries a second payment | `MISMATCH` / `MULTI_OP_DIVERGENCE` |
+| Envelope is a fee-bump (who pays changed) | refused by name, not half-understood |
+| Envelope on disk is not the one in the receipt | `TAMPERED` / `ENVELOPE_NOT_THE_ONE_IN_THE_RECEIPT` |
+
+**A fact worth knowing:** a Stellar envelope carries no network field. The
+passphrase is supplied by the caller and enters the transaction hash, so a
+testnet signature cannot be replayed as mainnet — but the caller must be right
+about which network it asks for.
+
+### Measured performance
+
+`docs/evidence/agent-gate-bench.json` — 2000 in-process samples on
+node v24.18.0, win32/x64, 12 CPUs (2026-11-10):
+
+| Operation | p50 | p95 |
+|---|---|---|
+| `evaluate` (mandate gate) | 15 µs | 51 µs |
+| `checkConformance` | 2 µs | 8 µs |
+| `issueReceipt` (Ed25519) | 276 µs | 744 µs |
+| `verifyReceipt` | 317 µs | 850 µs |
+
+**Read the JSON, not the table:** in-process timings move with machine load. The
+committed artifact carries the machine description and the sample count, and it
+is the record; the table above is a convenience copy of it.
+
+**Ceiling:** in-process, single-threaded, offline. Not a deployed-service
+latency, not chain confirmation, not throughput. Reproduce on your own machine
+with `node scripts/agent-gate-bench.mjs --iterations 2000`.
+
+### Verify a receipt yourself
+
+```text
+node packages/agent-gate/verify-cli.mjs --receipt receipt.json --key operator.pub --xdr signed.xdr
+```
+
+Exit codes: `0` VERIFIED · `2` the receipt faithfully records a **refused**
+execution · `3` TAMPERED · `4` UNKNOWN (missing or unreadable input).
+
+(Example paths, not committed fixtures: a runnable receipt would have to ship an
+operator private key, which this repo does not do. The exit-code behaviour is
+exercised in `test/integrations/agent-gate-envelope.test.mjs`.)
+
+## 6. Run it
 
 ```bash
 node packages/agent-gate/demo.mjs
@@ -84,7 +146,16 @@ Fourteen fixed cases, exit 1 on any drift: allow, per-tx cap, recipient, memo,
 expiry, window cap, unknown field, honest envelope, drifted envelope, batched
 envelope, receipt verification, amount tampering, intact chain, broken chain.
 
-## 6. What "done" means for the next phase
+```bash
+node packages/agent-gate/demo/cli-flow.mjs
+```
+
+The full signed-envelope loop, offline: gate → build → wallet signs → decode →
+conformance → receipt → verify, plus the drift, batch and wallet-swap refusals.
+The wallet is a local keypair in a Freighter-shaped object, and the output says
+so: **a real extension is not exercised here.**
+
+## 7. What "done" means for the next phase
 
 The gate becomes adoptable only when all four exist:
 

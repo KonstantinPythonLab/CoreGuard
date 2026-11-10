@@ -29,16 +29,43 @@ authorized**, including a batch that buries a second payment.
 - **No chain claim.** `VERIFIED` from `verifyReceipt()` means "these bytes
   recompute consistently". It is not a ledger read and not an audit.
 
+## The signed envelope is the unit
+
+`adapters/stellar-xdr.mjs` builds unsigned envelopes and decodes signed ones;
+`adapters/freighter.mjs` asks the wallet to sign and refuses a wallet that
+returns different bytes; `verify-cli.mjs` recomputes everything later.
+
+| Refusal | Where |
+|---|---|
+| wallet returns another transaction | `REFUSED` (transaction hash compared) |
+| wallet returns nothing / unsigned | `REFUSED` |
+| envelope adds a second payment | `MISMATCH` / `MULTI_OP_DIVERGENCE` |
+| fee-bump envelope | refused by name |
+| on-disk envelope is not the receipt's | `TAMPERED` / `ENVELOPE_NOT_THE_ONE_IN_THE_RECEIPT` |
+
+An envelope carries no network: the passphrase enters the transaction hash, so
+testnet bytes cannot be replayed as mainnet — and the caller must be right about
+the network it asks for.
+
 ## Run it
 
 ```bash
 node packages/agent-gate/demo.mjs
 ```
 
-Eleven fixed cases (allow · per-tx cap · recipient · memo · expiry · window ·
+Fourteen fixed cases (allow · per-tx cap · recipient · memo · expiry · window ·
 unknown field · honest envelope · drifted envelope · batched envelope · receipt
 tamper · chain break). Exit 1 if the verdict matrix drifts, so the demo doubles
 as a self-check.
+
+```bash
+node packages/agent-gate/demo/cli-flow.mjs
+```
+
+The full offline loop: gate → build → wallet signs → decode → conformance →
+receipt → verify, including the drift, batch and wallet-swap refusals. The wallet
+is a local keypair in a Freighter-shaped object; the output states that a real
+extension is not exercised.
 
 ## Verify a receipt yourself
 

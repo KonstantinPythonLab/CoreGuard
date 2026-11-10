@@ -140,6 +140,7 @@ const SKIP = [
   { re: /node scripts\/current-state\.mjs --check/, reason: "re-measures docs-node contract (recursion) and reads the live tree; covered by test/ci/current-state.test.js" },
   { re: /npm run stellar:demo/, reason: "live Stellar testnet demo (external network, Friendbot + Horizon) - owned by examples/stellar-verify/demo.mjs, not a docs contract" },
   { re: /node examples\/stellar-verify\/demo\.mjs/, reason: "live Stellar testnet demo (external network, Friendbot + Horizon) - not a docs contract" },
+  { re: /node examples\/stellar-integration-pilot\/demo\.mjs/, reason: "Stellar integration pilot demo (offline-first; optional live read-only verify with --tx) - not a docs contract" },
 ];
 
 /**

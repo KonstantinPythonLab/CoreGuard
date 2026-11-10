@@ -104,6 +104,50 @@
       "note": "Verifies committed evidence packages; adoption by a third party is 0."
     },
     {
+      "id": "agent-gate-xdr",
+      "label": "Envelope builder and decoder (AGENT-XDR/1)",
+      "path": "packages/agent-gate/adapters/stellar-xdr.mjs",
+      "code": "BUILT",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["test/integrations/agent-gate-envelope.test.mjs"],
+      "note": "Builds unsigned envelopes, decodes signed ones, refuses secrets, fee-bumps and unreadable bytes. An envelope carries no network: the hash binds the caller's passphrase."
+    },
+    {
+      "id": "agent-gate-freighter",
+      "label": "Freighter signing adapter",
+      "path": "packages/agent-gate/adapters/freighter.mjs",
+      "code": "BUILT_UNVERIFIED",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["test/integrations/agent-gate-envelope.test.mjs"],
+      "note": "Contract verified with an injected wallet: signed, empty, unsigned and swapped-bytes cases. A real Freighter extension has never signed in this repo."
+    },
+    {
+      "id": "agent-gate-verify-cli",
+      "label": "Third-party verifier CLI",
+      "path": "packages/agent-gate/verify-cli.mjs",
+      "code": "BUILT",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["test/integrations/agent-gate-envelope.test.mjs"],
+      "note": "Exit codes 0/2/3/4 proven, including a receipt paired with a foreign envelope. Zero external users have run it."
+    },
+    {
+      "id": "agent-gate-bench",
+      "label": "In-process performance measurement",
+      "path": "scripts/agent-gate-bench.mjs",
+      "code": "BUILT",
+      "execution": "TEST_EXECUTED",
+      "integration": "NOT_BUILT",
+      "matrixRow": true,
+      "evidence": ["docs/evidence/agent-gate-bench.json"],
+      "note": "2000 samples recorded. In-process only: not deployed latency, not chain confirmation, not throughput."
+    },
+    {
       "id": "agentic-escrow-adapter",
       "label": "Agentic escrow arbitration adapter",
       "path": "packages/agentic-escrow-arbitration",
