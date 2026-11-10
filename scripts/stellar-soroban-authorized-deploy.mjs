@@ -57,6 +57,16 @@ export const WALLET_FILE_REL = ".stellar-wallet.json";
 export const ARTIFACT_NAME = "cg-commitment-anchor-wasm";
 export const MAINNET_FEE_FLOOR = 1000000;
 export const MAINNET_BALANCE_MIN_XLM = 2;
+// Fee-solvency constants the ledger itself prices against: a transaction whose declared fee
+// would leave the account below its minimum balance is refused by the network with
+// txResultCode txInsufficientBalance (-7) BEFORE any effect (measured 2026-11-10 on the real
+// mainnet upload(wasm) of cg_commitment_anchor.wasm: the simulation priced 130,861,110
+// stroops while the funded deployer held 3.5069800 XLM = 35,069,800 stroops). The minimum
+// balance for a non-sponsoring single-entry account is 2 x base reserve (5,000,000 stroops
+// each) on mainnet; an account with extra subentries/trustlines owes MORE, so this constant
+// is the documented lower bound of the ledger's rule, never an upper one.
+export const MAINNET_BASE_RESERVE_STROOPS = 5000000;
+export const MAINNET_MIN_BALANCE_STROOPS = 10000000;
 export const INFRA = {
   testnet: { rpc: "https://soroban-testnet.stellar.org", horizon: "https://horizon-testnet.stellar.org", friendbot: "https://friendbot.stellar.org" },
   mainnet: { rpc: "https://mainnet.sorobanrpc.com", horizon: "https://horizon.stellar.org", friendbot: null },
@@ -304,7 +314,7 @@ function toContractStrkey(contractId) {
   try { return StrKey.encodeContract(Buffer.from(h, "hex")); } catch { return contractId; }
 }
 
-async function sendAndPoll(rpcServer, net, tx, keypair, label) {
+async function sendAndPoll(rpcServer, net, tx, keypair, label, solvencyGate = null) {
   const inter = INFRA[net];
   // Transient-network retry (preparation phase ONLY): prepareTransaction + sign may
   // hit a brief connection failure (undici "fetch failed", measured 2026-11-08
@@ -333,6 +343,23 @@ async function sendAndPoll(rpcServer, net, tx, keypair, label) {
     }
   }
   if (prepErr || !prepared) throw prepErr;
+  // Fee-solvency gate (fail-closed, BEFORE any submission): prepareTransaction has finalized
+  // the tx's declared fee from its own simulation. The ledger refuses a tx whose fee would
+  // leave the paying account below its minimum balance (txInsufficientBalance); catching that
+  // locally yields a coded, zero-submission refusal instead of a blind wire reject - measured
+  // 2026-11-10 when the priced fee 130861110 stroops exceeded the funded 35069800 stroops
+  // balance. The balance snapshot is the preflight read (read-only); between it and here only
+  // this run's own writes can move the account, and the create step re-bases the snapshot with
+  // the upload's actually-charged fee before its own check.
+  if (solvencyGate) {
+    const solvency = evaluateFeeSolvency({ feeStroops: prepared.fee, balanceStroops: solvencyGate.balanceStroops, minReserveStroops: solvencyGate.minReserveStroops });
+    if (solvency.state !== "ALLOWED") {
+      // Nothing was submitted, so no sequence slot was consumed on-chain; the run aborts right
+      // after the caller records this refusal, and every run re-reads the live sequence from
+      // the wire at startup before building anything.
+      return { step: label, state: "REJECTED", rejectFace: "PRE_SEND_SOLVENCY", error: solvency.error };
+    }
+  }
   // SDK 17.4+ (RpcServer.sendTransaction): the wire param must be the signed Transaction object —
   // the client calls transaction.toXdr() internally, so a raw base64 string has no such method and
   // crashes (measured: testnet rehearsal died in _sendTransaction on the first submission).
@@ -393,6 +420,21 @@ function diagnostic(res) {
           return t && t !== 'invokeHostFunctionResultSuccess' && inv ? `op:${t}` : (t || null);
         }).filter(Boolean);
       } catch { /* keep the raw bytes only */ }
+    }
+    if (b64) {
+      // The body-arm walk above only fills resultCode for success/failed arm shapes. A
+      // sendTransaction REJECT carries a bare result-code union arm with NO operation
+      // results (measured 2026-11-10: AAAA AAfMyDb////5AAAAAA== recorded resultCode null
+      // before this decode existed). decodeTransactionResultCode reads the same bytes
+      // through the SDK's own schema enum - name + numeric code + feeCharged - so the
+      // artifact carries its own verdict instead of a hole. Fail-closed: an undecodable
+      // blob keeps the raw bytes only.
+      const decoded = decodeTransactionResultCode(b64);
+      if (decoded.decodable) {
+        parts.resultCode = decoded.name || `code ${decoded.code}`;
+        parts.resultCodeNumeric = decoded.code;
+        if (decoded.feeCharged != null) parts.feeCharged = decoded.feeCharged;
+      }
     }
     if (res && res.diagnosticEvents && Array.isArray(res.diagnosticEvents)) {
       try { parts.diagnosticEventsXdrB64 = res.diagnosticEvents.map((d) => (typeof d === "string" ? d : (typeof d.toXDR === "function" ? d.toXDR("base64") : null))).filter(Boolean); } catch {}
@@ -607,8 +649,15 @@ function baseArtifact({ net, decisions, manifest, wasmSha256, wasmBytesLen, depl
 }
 
 function finalizeVerdict(artifact) {
-  const bad = (artifact.steps || []).some((s) => s.state && s.state !== "INVOKED" && s.state !== "IDEMPOTENT" && s.state !== "OK" && s.state !== "REFUSED" && s.state !== "SIMULATED_NONE" && s.state !== "SKIP");
-  if ((artifact.steps || []).some((s) => s.ok === false)) artifact.summary.verdict = "NOT_CONFIRMED — one or more steps failed their expected state (fail-closed; inspect steps)";
+  // A verdict must never lie about its own steps (the false-green class): the committed
+  // 2026-11-09 mainnet artifact recorded steps [<upload(wasm)> REJECTED] with deployed:false
+  // while its summary STILL read the full DEPLOY_VERDICT string, silently, because the
+  // failure was computed here and then never applied. A REJECTED/FAILED/TIMEOUT step (the
+  // network faces sendAndPoll returns on a dead tx) or an ok:false record always downgrades.
+  // EXPECTED-state names stay allowed (IDEMPOTENT/OK/REFUSED/SIMULATED_NONE/SKIP) so a green
+  // rehearsal/replay keeps its exact verdict.
+  const failed = (artifact.steps || []).some((s) => s.ok === false || s.state === "REJECTED" || s.state === "FAILED" || s.state === "TIMEOUT");
+  if (failed) artifact.summary.verdict = "NOT_CONFIRMED — one or more steps failed their expected state (fail-closed; inspect steps)";
   else if (artifact.network === "stellar-mainnet") {
     if (artifact.laneWrites !== "NONE" || artifact.rehearsal) artifact.summary.verdict = "NOT_CONFIRMED — a mainnet run must stay deploy-only";
     else artifact.summary.verdict = DEPLOY_VERDICT;
@@ -1020,6 +1069,7 @@ export async function main(argv) {
   catch (e) { console.error((e && e.message) || "wallet load failed"); return 1; }
   const { keypair, publicKey } = wallet;
 
+  let balStroops = null; // exact stroop-parsed preflight balance (null outside mainnet)
   if (net === "mainnet") {
     const decisions = parseDecisionDoc(await readFile(join(ROOT, DECISIONS_DOC_REL), "utf8").catch(() => ""));
     const rehearsalArtifact = await readArtifactFile(ARTIFACT_OUT.testnet);
@@ -1034,12 +1084,28 @@ export async function main(argv) {
       ...mainnetFeeViolations({ fee, rehearsalMaxFee: rmax }),
     ];
     if (all.length) { console.error(`MAINNET REFUSED (owner gates, fail-closed):\n  ${all.join("\n  ")}`); return 3; }
-    const bal = await nativeBalanceXlm(net, publicKey);
-    if (bal === null || Number(bal) < MAINNET_BALANCE_MIN_XLM) {
-      console.error(`BALANCE PREFLIGHT FAILED (read-only): native ${bal === null ? "(unavailable)" : bal} XLM for ${publicKey} — requires >= ${MAINNET_BALANCE_MIN_XLM} XLM`);
+    const meta = await nativeAccountMeta(net, publicKey);
+    const nativeXlm = meta === null ? null : meta.balance;
+    if (meta === null || Number(nativeXlm) < MAINNET_BALANCE_MIN_XLM) {
+      console.error(`BALANCE PREFLIGHT FAILED (read-only): native ${nativeXlm === null ? "(unavailable)" : nativeXlm} XLM for ${publicKey} — requires >= ${MAINNET_BALANCE_MIN_XLM} XLM`);
       return 7;
     }
-    console.log(`balance preflight (read-only): native ${bal} XLM`);
+    // Exact stroop parse (never float math on money) + the PER-ACCOUNT minimum balance the
+    // ledger will actually enforce (subentries raise it above the single-entry floor - the
+    // funded deployer carries a USDC trustline, so its exact minimum is 1.5 XLM, not 1.0).
+    const balStroops = xlmStringToStroops(nativeXlm);
+    if (balStroops === null) {
+      console.error(`BALANCE PREFLIGHT FAILED (read-only): unreadable balance string ${JSON.stringify(nativeXlm)}`);
+      return 7;
+    }
+    const exactMin = exactMinBalanceStroops({
+      baseReserveStroops: MAINNET_BASE_RESERVE_STROOPS,
+      subentryCount: meta.subentryCount,
+      numSponsored: meta.numSponsored,
+      numSponsoring: meta.numSponsoring,
+    });
+    const minBalanceStroops = exactMin === null ? MAINNET_MIN_BALANCE_STROOPS : exactMin;
+    console.log(`balance preflight (read-only): native ${nativeXlm} XLM · subentries ${meta.subentryCount} · minimum balance ${minBalanceStroops} stroops (${exactMin === null ? "documented lower bound" : "exact for this account"})`);
     if (fee === null) { console.error("--fee <stroops> is required on mainnet (recorded fee policy)"); return 2; }
     MAINNET.decisions = decisions;
   }
@@ -1061,13 +1127,35 @@ export async function main(argv) {
   artifact.fee.requested = net === "testnet" && artifact.fee.requested === null ? "1000000" : artifact.fee.requested;
   const fee = artifact.fee.requested;
 
+  // Solvency evidence + gate wiring: the exact read-only balance and the reserve the gate
+  // assumes travel IN the artifact, so any rejection carries its own arithmetic with it
+  // (the deployer identity is a public key; no secret material ever reaches the file).
+  // Re-bases only inside the run: the create step subtracts the upload's actually-charged
+  // fee before its own gate consult.
+  if (net === "mainnet") {
+    artifact.deployerBalanceStroops = String(balStroops);
+    artifact.minBalanceReserveStroops = String(minBalanceStroops);
+    artifact.minBalanceReserveFace = exactMin === null ? "DOCUMENTED_LOWER_BOUND" : "EXACT_PER_ACCOUNT";
+  }
+  const solvencyGate = net === "mainnet" ? { balanceStroops: balStroops, minReserveStroops: minBalanceStroops } : null;
+
   // (1) UPLOAD the deploy material.
   const up = buildUploadTx({ wasm: wasmBytes, source: publicKey, sequence: String(seqCounter.value), network: net, fee, ownerAuthorization: net === "mainnet" });
   if (up.state !== "BUILD_OK") { console.error(`upload build gated: ${up.error}`); return 2; }
   seqCounter.value += 1n;
-  const upRes = await sendAndPoll(rpcServer, net, up.tx, keypair, "upload(wasm)");
+  const upRes = await sendAndPoll(rpcServer, net, up.tx, keypair, "upload(wasm)", solvencyGate);
   artifact.steps.push(upRes);
-  if (upRes.state !== "INVOKED") { return saveFail(artifact, 5); }
+  if (upRes.state !== "INVOKED") {
+    if (upRes.rejectFace === "PRE_SEND_SOLVENCY") console.error("upload(wasm): fee solvency gate refused BEFORE any submission - fund the deployer to at least (declared fee + minimum balance) and re-run; the artifact records the exact arithmetic");
+    return saveFail(artifact, 5);
+  }
+  // The upload LANDED on-chain: its actually-charged fee has left the account, so the create
+  // step's solvency consult must consume the post-upload balance (actual charged fee = the
+  // real remaining truth; an unreadable/null feeCharged keeps the preflight snapshot and is
+  // noted, never guessed).
+  if (solvencyGate && upRes.feeCharged !== null && upRes.feeCharged !== undefined && safeStroopsBig(upRes.feeCharged) !== null) {
+    solvencyGate.balanceStroops = balStroops - safeStroopsBig(upRes.feeCharged);
+  }
 
   // (2) CREATE with the deterministic salt (same address on any retry).
   const cr = buildCreateContractTx({ source: publicKey, sequence: String(seqCounter.value), wasmHash: wasmSha256, network: net, salt: deriveSalt(publicKey, wasmSha256), fee, ownerAuthorization: net === "mainnet" });
@@ -1075,7 +1163,7 @@ export async function main(argv) {
   seqCounter.value += 1n;
   let crRes = null;
   try {
-    crRes = await sendAndPoll(rpcServer, net, cr.tx, keypair, "createCustomContract");
+    crRes = await sendAndPoll(rpcServer, net, cr.tx, keypair, "createCustomContract", solvencyGate);
   } catch (e) {
     // Deterministic salt: an earlier attempt already created this exact instance (same deployer+salt+wasm).
     // Soroban refuses a fresh create with the same salt (HostError Storage/ExistingValue: "contract already
@@ -1217,16 +1305,132 @@ export async function verifyMode(plan) {
   return 0;
 }
 
-async function nativeBalanceXlm(net, publicKey) {
+async function nativeAccountMeta(net, publicKey) {
   try {
     const res = await fetch(`${INFRA[net].horizon}/accounts/${publicKey}`);
     if (!res.ok) return null;
     const rec = await res.json();
     const native = ((rec.balances || []).find((b) => b.asset_type === "native") || {}).balance;
-    return native === undefined ? null : String(native);
+    if (native === undefined) return null;
+    return {
+      balance: String(native),
+      subentryCount: Number.isInteger(rec.subentry_count) ? rec.subentry_count : 0,
+      numSponsoring: Number.isInteger(rec.num_sponsoring) ? rec.num_sponsoring : 0,
+      numSponsored: Number.isInteger(rec.num_sponsored) ? rec.num_sponsored : 0,
+    };
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Coded rejection decode + fee solvency (pure, offline, test-bonded)  */
+/* ------------------------------------------------------------------ */
+
+function safeStroopsBig(v) {
+  if (v === null || v === undefined) return null;
+  try { const n = BigInt(v); return n < 0n ? null : n; } catch { return null; }
+}
+
+/**
+ * The per-account EXACT minimum balance for the ledger's fee-solvency rule in the plain
+ * (non-sponsoring, sponsorship-free) account shape:
+ *   minimum balance = base reserve x (2 + subentry count)
+ * every trustline/offer/data entry occupies one subentry slot (measured 2026-11-10: the
+ * funded deployer carries ONE USDC trustline from the signed swap cycle, so its exact
+ * minimum is 3 x 5,000,000 = 15,000,000 stroops, NOT the single-entry 10,000,000). Any
+ * sponsored shape shifts reserves between accounts under rules this runner does not claim
+ * to re-derive, so it returns null there and the caller keeps the documented LOWER bound
+ * constant - the wire, which knows the exact per-account truth, retains the final word.
+ */
+export function exactMinBalanceStroops({ baseReserveStroops, subentryCount, numSponsored = 0, numSponsoring = 0 } = {}) {
+  const base = safeStroopsBig(baseReserveStroops);
+  if (base === null || !Number.isInteger(subentryCount) || subentryCount < 0) return null;
+  if (numSponsored > 0 || numSponsoring > 0) return null;
+  return base * BigInt(2 + subentryCount);
+}
+
+/**
+ * Exact XLM-string to stroops conversion, never float math on money:
+ * "3.5069800" -> 35069800n; anything else (fraction beyond 7 digits, sign, junk) -> null.
+ * 7 digits is the ledger's own XLM precision, so shorter fractions pad with zeros.
+ */
+export function xlmStringToStroops(xlmString) {
+  // Fail-closed, not truncating: an input carrying MORE precision than the ledger's own
+  // 7-digit XLM scale must never be silently rounded (money math has no silence).
+  if (typeof xlmString !== "string" || xlmString.length === 0) return null;
+  const m = /^(\d+)(?:\.(\d*))?$/.exec(xlmString);
+  if (!m || (m[2] || "").length > 7) return null;
+  const frac = (m[2] || "").padEnd(7, "0");
+  return safeStroopsBig(`${m[1]}${frac}`);
+}
+
+// Result-code names built from the SDK's own TransactionResultCode schema enum - machine
+// truth, never a hand-maintained table: an earlier hand-ordered table decoded a real reject
+// into the wrong arm by positions (a -7 is txInsufficientBalance at feeCharged 130861110,
+// NOT a bad-seq/bad-auth arm as suspected before the bytes were decoded). Codes the SDK
+// schema does not name decode to name:null with the numeric code intact.
+const TX_RESULT_CODE_NAME_BY_VALUE = (() => {
+  const map = new Map();
+  try {
+    for (const [name, value] of Object.entries(xdr.TransactionResultCode.schema || {})) {
+      if (typeof value === "number") map.set(value, name);
+    }
+  } catch { /* absent schema keeps names null; codes still decode */ }
+  return map;
+})();
+
+/**
+ * Decode an errorResultXdr TransactionResult blob into its canonical result code and
+ * charged fee. sendTransaction REJECTS carry a bare result-code union arm with NO operation
+ * results, so the body-arm walk in diagnostic() cannot name them - this reads the same
+ * bytes flatly (feeCharged int64 + code int32) through the SDK enum. Fail-closed:
+ * {decodable:false} on any undecodable input (never an invented code).
+ */
+export function decodeTransactionResultCode(errorResultXdrB64) {
+  // Fail-closed on non-strings and empties (fromXDR(null) semantics are not a contract).
+  if (typeof errorResultXdrB64 !== "string" || errorResultXdrB64.length === 0) return { decodable: false };
+  let tr = null;
+  try { tr = xdr.TransactionResult.fromXDR(errorResultXdrB64, "base64"); } catch { return { decodable: false }; }
+  let codeValue = null;
+  let feeCharged = null;
+  try {
+    const flat = typeof tr.toXdrObject === "function" ? tr.toXdrObject() : null;
+    if (flat && flat.feeCharged !== undefined) feeCharged = String(flat.feeCharged);
+    if (flat && flat.result && flat.result.code !== undefined) codeValue = Number(flat.result.code);
+  } catch { /* fail-closed below */ }
+  if (!Number.isInteger(codeValue)) return { decodable: false, feeCharged };
+  return { decodable: true, code: codeValue, name: TX_RESULT_CODE_NAME_BY_VALUE.get(codeValue) || null, feeCharged };
+}
+
+/**
+ * The ledger's own fee-solvency rule, evaluated locally BEFORE any submission: a transaction
+ * whose declared fee would leave the account below its minimum balance is refused with
+ * txInsufficientBalance (-7, "fee would gobble minimum balance"). Detecting that locally
+ * yields a coded, zero-submission refusal instead of a blind wire reject (measured
+ * 2026-11-10 on the real mainnet upload(wasm): priced fee 130861110 stroops vs funded
+ * 35069800 stroops). minReserveStroops is the documented LOWER bound of the ledger's
+ * per-account minimum balance (MAINNET_MIN_BALANCE_STROOPS = 2 x base reserve); an account
+ * with subentries or trustlines owes more, so a gate pass here is never a ledger guarantee
+ * - it is this runner's strongest local verdict before the wire has its final word.
+ * Unreadable inputs refuse (REJECTED_PRESEND), never pass: fail-closed.
+ */
+export function evaluateFeeSolvency({ feeStroops, balanceStroops, minReserveStroops } = {}) {
+  const fee = safeStroopsBig(feeStroops);
+  const bal = safeStroopsBig(balanceStroops);
+  const res = safeStroopsBig(minReserveStroops);
+  if (fee === null || bal === null || res === null) {
+    return { state: "REJECTED_PRESEND", shortfallStroops: null, error: "fee solvency gate: unreadable fee/balance/reserve inputs - refusing fail-closed (nothing was submitted)" };
+  }
+  const headroom = bal - fee;
+  if (headroom < res) {
+    return {
+      state: "REJECTED_PRESEND",
+      shortfallStroops: String(res - headroom),
+      error: `PRE-SEND FEE SOLVENCY GATE (nothing was submitted): declared fee ${fee.toString()} stroops vs balance ${bal.toString()} stroops; paying it would leave ${headroom.toString()} < the ${res.toString()} stroop minimum balance, which is exactly the ledger's txInsufficientBalance refusal (code -7). Fund the deployer to at least ${(fee + res).toString()} stroops (declared fee + minimum balance), then re-run.`,
+    };
+  }
+  return { state: "ALLOWED", headroomStroops: String(headroom) };
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {

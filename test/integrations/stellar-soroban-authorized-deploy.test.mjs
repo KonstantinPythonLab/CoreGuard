@@ -180,6 +180,88 @@ test("readback decoder: the typed-sim scvMap face (soroban-testnet measured 2026
   assert.equal(deploy.decodeAuthorizedAnchorScVal(partial).kind, "UNDECODABLE", "a map missing any of the three fields stays fail-closed");
 });
 
+/* ---------------- authorized-lane rejection decode + fee solvency ---------------- */
+
+test("committed mainnet artifact: REJECTED upload(wasm) decodes txInsufficientBalance from its OWN bytes (fresh-clone-reproducible Phase-3 root cause)", async () => {
+  const artifact = JSON.parse(await readFile(join(ROOT, "docs/evidence/stellar-soroban-authorized-deploy.json"), "utf8"));
+  assert.equal(artifact.steps.length, 1);
+  const step = artifact.steps[0];
+  assert.equal(step.step, "upload(wasm)");
+  assert.equal(step.state, "REJECTED");
+  assert.equal(artifact.summary.deployed, false);
+  assert.equal(artifact.summary.contractId, null);
+  const emitted = JSON.parse(step.error);
+  assert.equal(emitted.resultCode, null, "the 2026-11-09-era runner left the code unnamed; the bytes carry the verdict instead");
+  const decoded = deploy.decodeTransactionResultCode(emitted.errorResultXdr);
+  assert.equal(decoded.decodable, true);
+  assert.equal(decoded.code, -7);
+  assert.equal(decoded.name, "txInsufficientBalance", "the ledger's own code: a fee that would gobble minimum balance (NEVER a bad-seq/bad-auth arm)");
+  assert.equal(decoded.feeCharged, "130861110");
+  // Composition provable from the artifact's own numbers: requested inclusion bid (1,000,000)
+  // + simulation-priced resource fee (129,861,110) = the charged fee. WASM upload is priced
+  // by the network, so the fix is funding, never a lower --fee.
+  assert.equal(BigInt(decoded.feeCharged) - BigInt(artifact.fee.requested), 129861110n);
+});
+
+test("decode fail-closed: junk never invents a code, and the rehearsal's measured txBadSeq blob still names itself", () => {
+  assert.equal(deploy.decodeTransactionResultCode("AAAAAA==").decodable, false, "a truncated blob is not a code");
+  assert.equal(deploy.decodeTransactionResultCode("not-an-xdr").decodable, false);
+  assert.equal(deploy.decodeTransactionResultCode(null).decodable, false);
+  assert.equal(deploy.decodeTransactionResultCode("").decodable, false);
+  // The rehearsal's first-commit reject, verbatim from the runner's resume-path comment
+  // (feeCharged 40674): -5 = txBadSeq — which also binds the canonical enum positions that
+  // name today's -7 rejection (txBadSeq -5, txBadAuth -6, txInsufficientBalance -7).
+  const seqRehearsal = deploy.decodeTransactionResultCode("AAAAAAAAnuL////7AAAAAA==");
+  assert.equal(seqRehearsal.decodable, true);
+  assert.equal(seqRehearsal.code, -5);
+  assert.equal(seqRehearsal.feeCharged, "40674");
+  assert.equal(seqRehearsal.name, "txBadSeq");
+});
+
+test("fee solvency: the measured figures are refused PRE-SEND; exact fee+reserve boundary applied-and-bites", () => {
+  const measured = deploy.evaluateFeeSolvency({ feeStroops: "130861110", balanceStroops: "35069800", minReserveStroops: "10000000" });
+  assert.equal(measured.state, "REJECTED_PRESEND");
+  assert.equal(measured.shortfallStroops, "105791310", "fee + minimum balance - funded balance");
+  assert.ok(measured.error.includes("txInsufficientBalance"));
+  assert.ok(measured.error.includes("nothing was submitted"));
+  assert.ok(measured.error.includes("140861110"), "the remedy must name the exact solvent minimum (declared fee + reserve)");
+  assert.equal(deploy.evaluateFeeSolvency({ feeStroops: "130861110", balanceStroops: "140861110", minReserveStroops: "10000000" }).state, "ALLOWED", "fee + exact reserve = solvent at zero headroom");
+  assert.equal(deploy.evaluateFeeSolvency({ feeStroops: "130861110", balanceStroops: "140861109", minReserveStroops: "10000000" }).state, "REJECTED_PRESEND", "one stroop short must bite");
+  assert.equal(deploy.evaluateFeeSolvency({}).state, "REJECTED_PRESEND", "unreadable inputs fail closed");
+  assert.equal(deploy.evaluateFeeSolvency({ feeStroops: "130861110.5", balanceStroops: "350698000", minReserveStroops: "10000000" }).state, "REJECTED_PRESEND", "a fractional fee is unreadable stroops - refuse");
+  // The per-account EXACT minimum (this deployer carries a USDC trustline => 3 base reserves):
+  assert.equal(deploy.exactMinBalanceStroops({ baseReserveStroops: "5000000", subentryCount: 0 }), 10000000n);
+  assert.equal(deploy.exactMinBalanceStroops({ baseReserveStroops: "5000000", subentryCount: 1 }), 15000000n, "the funded deployer's shape (1 USDC trustline measured on the live wire)");
+  assert.equal(deploy.exactMinBalanceStroops({ baseReserveStroops: "5000000", subentryCount: 1, numSponsored: 1 }), null, "sponsored shapes are not re-derived - the wire keeps the final word");
+  assert.equal(deploy.exactMinBalanceStroops({ baseReserveStroops: "5000000" }), null);
+  const trustlineAware = deploy.evaluateFeeSolvency({ feeStroops: "130861110", balanceStroops: "35069800", minReserveStroops: "15000000" });
+  assert.equal(trustlineAware.state, "REJECTED_PRESEND");
+  assert.equal(trustlineAware.shortfallStroops, "110791310");
+  assert.ok(trustlineAware.error.includes("145861110"), "the trustline-aware solvent minimum: 130,861,110 + 3 x 5,000,000");
+  // Exact stroop money parity (the funded floor was satisfied at 2 XLM while the fee needed 14.59):
+  assert.equal(deploy.xlmStringToStroops("3.5069800"), 35069800n);
+  assert.equal(deploy.xlmStringToStroops("2.0000000"), 20000000n);
+  assert.equal(deploy.xlmStringToStroops("1.5"), 15000000n);
+  assert.equal(deploy.xlmStringToStroops("0.00000012"), null, "beyond the ledger's 7-digit precision: never truncate money");
+  assert.equal(deploy.xlmStringToStroops("-3.5"), null);
+  assert.equal(deploy.xlmStringToStroops(null), null);
+});
+
+test("source contract: the solvency consult precedes EVERY submission, and artifacts self-decode rejections", async () => {
+  const source = await readFile(join(ROOT, RUNNER_REL), "utf8");
+  const gateIdx = source.indexOf("if (solvencyGate)");
+  const sendIdx = source.indexOf("const res = await rpcServer.sendTransaction(prepared)");
+  assert.ok(gateIdx !== -1, "deleting the gate consult must bite here");
+  assert.ok(sendIdx !== -1, "the submission site must exist");
+  assert.ok(gateIdx < sendIdx, "the gate must be consulted before the FIRST sendTransaction");
+  assert.ok(source.includes('rejectFace: "PRE_SEND_SOLVENCY"'), "the local refusal is machine-readable, distinct from wire rejects");
+  assert.ok(source.includes('decodeTransactionResultCode(b64)'), "artifacts self-decode rejections - resultCode null can never return");
+  assert.ok(source.includes('s.state === "REJECTED" || s.state === "FAILED" || s.state === "TIMEOUT"'), "a failed step always downgrades the verdict (the false-EXECUTED-VERIFIED class)");
+  const mutant = source.replace("if (solvencyGate)", "if (false)");
+  assert.notEqual(mutant, source, "the mutation must actually apply");
+  assert.equal(mutant.indexOf("if (solvencyGate)"), -1, "the scanner is anchored to the exact consult literal, not a substring coincidence");
+});
+
 function makeStrkey(prefix) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let out = prefix;
