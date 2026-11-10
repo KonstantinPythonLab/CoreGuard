@@ -106,7 +106,7 @@
     "violations": 0,
     "docsNode": {
       "executed": 124,
-      "skipListed": 81,
+      "skipListed": 79,
       "docsCovered": 27
     }
   }

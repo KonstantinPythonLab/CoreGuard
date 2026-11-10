@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
 import { readdirSync, statSync, readFileSync, mkdtempSync, rmSync, existsSync, cpSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve, relative, sep } from "node:path";
@@ -70,6 +70,37 @@ function listMarkdown(dir, out = []) {
     else if (/\.(md|mdx)$/.test(e)) out.push(p);
   }
   return out;
+}
+
+/** The scanned set must be the CLONE's doc tree, not this disk's. Every count
+ *  this file prints is pinned in docs/state-snapshot.json and re-measured by
+ *  test/ci/current-state.test.js, so a folder that exists on one machine and
+ *  not in the repository moves the pinned number on that machine alone. Proven
+ *  drift: an untracked examples/stellar-integration-pilot/ shipped a fence whose
+ *  two commands are skip-listed, so a Windows dev checkout measured 81
+ *  skip-listed while Linux CI measured 79 — the pin could only ever match one
+ *  of them, and the guard reported it as a stale snapshot.
+ *
+ *  git is the authority (the same principle as the boundary audit's "the count
+ *  a clean clone reproduces"); the disk walk stays as the fallback for an
+ *  exported tarball, where no git metadata exists and no pin can hold either. */
+function trackedMarkdown() {
+  let listing;
+  try {
+    listing = execFileSync("git", ["ls-files", "-z", "--", "*.md", "*.mdx"], {
+      cwd: REPO,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch {
+    return listMarkdown(REPO);
+  }
+  return listing
+    .split("\0")
+    .filter(Boolean)
+    .map((p) => join(REPO, p))
+    .filter((p) => existsSync(p))
+    .filter((p) => !relative(REPO, p).split(sep).some((segment) => SCAN_SKIP_DIRS.has(segment)));
 }
 
 function extractBashFences(md) {
@@ -188,7 +219,7 @@ test("no documented command re-enters this contract through the test suite", () 
   // firing on Linux CI — a check whose behaviour depends on the checkout's
   // line endings, which is the cross-machine trap [C3] in miniature. Found by
   // negative control: removing the SKIP entry did not fail the guard here.
-  for (const md of listMarkdown(REPO)) {
+  for (const md of trackedMarkdown()) {
     const rel = relative(REPO, md).split(sep).join("/");
     if (rel.startsWith("legacy-quarantine/") || rel.includes("/node_modules/")) continue;
     for (const fence of extractBashFences(readFileSync(md, "utf8").replaceAll("\r\n", "\n"))) {
@@ -327,7 +358,7 @@ test("every documented node/npm command in the repo runs, is skip-listed with a 
     ], { ...SPAWN_OPTS, timeout: 60_000 });
     assert.equal(mk.status, 0, `intake candidate must be buildable: ${mk.stderr}`);
 
-    const docs = listMarkdown(REPO).sort();
+    const docs = trackedMarkdown().sort();
     assert.ok(docs.length > 100, `the scan must see the real doc tree, saw ${docs.length}`);
 
     for (const doc of docs) {

@@ -1,7 +1,7 @@
 {
-  "measuredAtUtc": "2026-11-10T22:03:38Z",
-  "gitCommit": "7e6a8a11c2feb6f6715a3e82ae331bf241afc3e5",
-  "commitsAheadOfV060": 364,
+  "measuredAtUtc": "2026-11-10T22:27:42Z",
+  "gitCommit": "5bfcc2bf77294a3cb6734a05dfe607738ca0830f",
+  "commitsAheadOfV060": 365,
   "testsTotal": 1503,
   "boundaryAudit": {
     "filesScanned": 1100,
@@ -11,7 +11,7 @@
   "peoplesCourtHarness": "PEOPLES_COURT_HARNESS_READY",
   "docsNode": {
     "executed": 124,
-    "skipListed": 81,
+    "skipListed": 79,
     "docsCovered": 27
   },
   "reproduce": {
