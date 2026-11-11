@@ -64,6 +64,7 @@ const ALLOWED = new Set([
   "docs/growth-execution-2026-11-11.md", // dated instrument: funding map + Wave/SCF timing verified 2026-11-11 (this push)
   "docs/sep-receipt-semantics-draft-2026-11-11.md", // dated instrument: SEP draft authored under owner delegation 2026-11-11 (this push)
   "docs/ceo-decisions-2026-11-11.md", // dated instrument: CEO delegated decisions - Wave/x402 price/submission policy (this push)
+  "docs/owner-click-runbook-2026-11-11.md", // dated instrument: owner click-runbook - possession steps (Wave/SCF/Freighter/npm-release/visibility/deploy) (this push)
   "docs/master-launch-adoption-plan-v2-2026-09-25.md",
   "docs/owner-decisions-and-claimable-facts-2026-09.md",
   "docs/phase-a-people-court-followup-draft-2026-09-25.md",
