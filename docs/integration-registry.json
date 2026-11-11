@@ -1,13 +1,13 @@
 {
   "platform": {
-    "testsTotal": 1467,
-    "filesScanned": 1058,
+    "testsTotal": 1511,
+    "filesScanned": 1116,
     "violations": 0,
     "peoplesCourtHarness": "PEOPLES_COURT_HARNESS_READY",
     "docsNode": {
-      "executed": 120,
-      "skipListed": 75,
-      "docsCovered": 25
+      "executed": 130,
+      "skipListed": 79,
+      "docsCovered": 28
     },
     "conformanceSuite": "CG-CS/1",
     "platformLevel": "L0",

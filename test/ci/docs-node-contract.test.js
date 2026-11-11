@@ -265,7 +265,7 @@ function buildSandbox(tmp) {
   // and writes ./var (inside the sandbox), so only the root file must be staged.
   assert.ok(existsSync(join(REPO, "demo.mjs")), "sandbox staging source missing in repo: demo.mjs");
   cpSync(join(REPO, "demo.mjs"), join(tmp, "demo.mjs"));
-  for (const rel of ["examples/delivery-fixture", "examples/vault", "examples/agent-platform-integration", "examples/real-fixture-intake", "examples/transfer", "examples/swap", "examples/multistep", "examples/provenance", "examples/reference-tribunal", "examples/platform-quickstart"]) {
+  for (const rel of ["examples/delivery-fixture", "examples/vault", "examples/agent-platform-integration", "examples/real-fixture-intake", "examples/transfer", "examples/swap", "examples/multistep", "examples/provenance", "examples/reference-tribunal", "examples/platform-quickstart", "examples/stellar-dex-integration"]) {
     assert.ok(existsSync(join(REPO, rel)), `sandbox staging source missing in repo: ${rel}`);
     cpSync(join(REPO, rel), join(tmp, rel), { recursive: true });
     assert.ok(existsSync(join(tmp, rel)), `sandbox staging failed for: ${rel}`);

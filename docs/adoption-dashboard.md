@@ -53,8 +53,8 @@ default.
 | Metric | Value |
 |---|---|
 | Test suite | 1511 |
-| Boundary audit | 1108 files / 0 violations |
-| Docs-node contract | 124 executed · 79 skip-listed · 27 covered |
+| Boundary audit | 1116 files / 0 violations |
+| Docs-node contract | 130 executed · 79 skip-listed · 28 covered |
 | Live-submission harness | PEOPLES_COURT_HARNESS_READY |
 
 ## Adoption surface (from the integration registry)

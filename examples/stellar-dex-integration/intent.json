@@ -1,0 +1,33 @@
+{
+  "version": "CGEP/1",
+  "chainId": "1114",
+  "network": "testnet",
+  "signer": "GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U",
+  "nonce": "1",
+  "validAfter": "0",
+  "validUntil": "9999999999",
+  "action": "SOROBAN_DEX_SWAP",
+  "target": "CCERTRITP7A6U4PQ7NUKHXKWL2BNRMSBLVAAAWWMRAZTICUN7ZGC5Q4R",
+  "selector": "0x38ed1739",
+  "asset": "native:XLM",
+  "amount": "1000000000",
+  "tokenIn": "native:XLM",
+  "tokenOut": "USDC:GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U",
+  "minReceived": "950000000",
+  "maxSlippageBps": "500",
+  "recipient": "GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U",
+  "constraints": [
+    {
+      "type": "MAX_VALUE",
+      "value": "1000000000"
+    },
+    {
+      "type": "MIN_RECEIVED",
+      "value": "950000000"
+    },
+    {
+      "type": "MAX_SLIPPAGE_BPS",
+      "value": "500"
+    }
+  ]
+}

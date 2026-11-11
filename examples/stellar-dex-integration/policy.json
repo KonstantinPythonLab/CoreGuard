@@ -1,0 +1,43 @@
+{
+  "version": "CGEP/1",
+  "policyId": "0x00000000000000000000000000000000000000cc",
+  "name": "Stellar Soroban DEX Swap Policy (exact-in / min-out)",
+  "rules": [
+    {
+      "ruleId": "VALUE_001",
+      "type": "VALUE_LIMIT",
+      "params": { "max": "1000000000" },
+      "severity": "CRITICAL"
+    },
+    {
+      "ruleId": "TARGET_001",
+      "type": "TARGET_ALLOWLIST",
+      "params": { "targets": ["CCERTRITP7A6U4PQ7NUKHXKWL2BNRMSBLVAAAWWMRAZTICUN7ZGC5Q4R"] },
+      "severity": "CRITICAL"
+    },
+    {
+      "ruleId": "RECIPIENT_001",
+      "type": "RECIPIENT_ALLOWLIST",
+      "params": { "addresses": ["GDJ3CRNLNDZ4AVWGPUG7DBC5BIAGMIONOONZGB5FSYAY44ZHOIPRKY7U"] },
+      "severity": "CRITICAL"
+    },
+    {
+      "ruleId": "SELECTOR_001",
+      "type": "SELECTOR_ALLOWLIST",
+      "params": { "selectors": ["0x38ed1739"] },
+      "severity": "CRITICAL"
+    },
+    {
+      "ruleId": "SLIPPAGE_001",
+      "type": "SLIPPAGE_BPS",
+      "params": { "bps": "500" },
+      "severity": "HIGH"
+    },
+    {
+      "ruleId": "DEADLINE_001",
+      "type": "DEADLINE",
+      "params": { "deadline": "9999999999" },
+      "severity": "HIGH"
+    }
+  ]
+}

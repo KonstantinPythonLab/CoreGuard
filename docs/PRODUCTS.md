@@ -276,6 +276,7 @@ Every Stellar deliverable that exists in this repository, with its honest networ
 | Soroban anchor contract (testnet) | TESTNET VERIFIED | `CCERTRITP7A6U4PQ7NUKHXKWL2BNRMSBLVAAAWWMRAZTICUN7ZGC5Q4R` · 11/11 tests |
 | AI Agent Payment Gate (STELLAR-AGENT/1) | **POLICY-GATE EXECUTED** | `docs/evidence/stellar-agent-gate-executed.json` (VERIFIED / REJECTED / HELD · submission stays credential-gated) — `node scripts/stellar-agent-gate-executed.mjs --verify` |
 | Soroban DEX gating (DEX-GATE/1) | **REAL-BOOK EXECUTED** | five verdicts against the REAL mainnet XLM/USDC order book (issuer network-discovered, depth-derived ceiling) · `docs/evidence/stellar-dex-gate-executed.json` — `node scripts/stellar-dex-gate-real.mjs --verify` · 9/9 tests |
+| Stellar DEX Integration example | **TESTNET/OFFLINE VERIFIED** | Soroban DEX swap gated by DEX-GATE/1 & DDE/1 fail-closed escrow · 5/5 tests · `examples/stellar-dex-integration/` — `node examples/stellar-dex-integration/verify-offline.mjs` |
 | Universal DApp Shield (guard.*) | **ARM-MODEL EXECUTED** | 2 ALLOW · 2 REQUIRE_REVIEW · 1 DENY · 1 REFUSED — `docs/evidence/universal-dapp-shield-executed.json` — `node scripts/universal-shield-executed.mjs --verify` |
 | Freighter wallet wrapper | BUILT (credential-gated) | `packages/stellar/freighter.mjs` |
 | Mainnet Executor | BUILT (credential-gated) | `packages/stellar/mainnet-executor.mjs` |
