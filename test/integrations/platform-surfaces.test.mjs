@@ -183,6 +183,22 @@ test("CG-WH/1: a missing Idempotency-Key is rejected — idempotency is mandator
 test("X402/1: the self-check proves the gate, the determinism, and the zero-revenue rule", () => {
   const r = x402SelfCheck();
   assert.equal(r.ok, true, JSON.stringify(r.cases.filter(([, p]) => !p)));
+  // [C40] regression lock (2026-11-11): the self-check's byte-determinism case
+  // spans two live challengeFor calls; under the wall clock a second boundary
+  // between them folded expiresAt and drifted the challenge id (one red suite
+  // run after two green runs the same day). The harness must honor an
+  // injected clock end to end, and the self-check must pin the clock itself:
+  const frozen = createX402Harness({ secret: SECRET, clock: () => 1750000000 });
+  const q = { amountCents: 500, lockedByOwner: true, provenance: "owner decision" };
+  const first = frozen.challengeFor({ resource: "/v1/verify", quote: q }).challenge;
+  const second = frozen.challengeFor({ resource: "/v1/verify", quote: q }).challenge;
+  assert.equal(first.expiresAt, 1750000300, "an injected clock must reach the canonical bytes");
+  assert.equal(first.id, second.id, "same quote + same frozen clock = byte-identical id");
+  assert.equal(
+    first.id,
+    buildChallenge({ resource: "/v1/verify", amountCents: 500, nowSeconds: 1750000000 }).id,
+    "the harness clock injection agrees with the canonical builder for the same input",
+  );
 });
 
 test("X402/1: no quote, a zero quote, and an unlocked quote are all GATED", () => {

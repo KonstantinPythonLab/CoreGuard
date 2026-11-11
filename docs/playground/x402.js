@@ -301,7 +301,16 @@ export function selfCheck() {
   const hypo = noQuote.challengeFor({ resource: "/v1/verify", quote: { amountCents: 500, provenance: "packages/pricing hypothesis" } });
   cases.push(["an unlocked price stays HYPOTHESIS and stays GATED", hypo.state === "GATED" && hypo.code === "PRICE_NOT_LOCKED" && hypo.priceStatus === "HYPOTHESIS"]);
 
-  const locked = createX402Harness({ secret: "harness-secret-not-a-real-key" });
+  // The byte-determinism check below builds TWO challenges from the same
+  // input and requires identical ids. The default clock is the wall clock
+  // and `expiresAt` folds it into the canonical bytes, so a second boundary
+  // between the two calls drifts the id and flakes this check (measured once
+  // in three suite runs on 2026-11-11). Same input includes the same clock
+  // input: pin the clock via the harness's own injection param so the
+  // self-check is deterministic by construction. The suite's canonical
+  // determinism test has pinned `nowSeconds` since birth; this is the same
+  // discipline applied at the self-check site.
+  const locked = createX402Harness({ secret: "harness-secret-not-a-real-key", clock: () => 1750000000 });
   const built = locked.challengeFor({ resource: "/v1/verify", quote: { amountCents: 500, lockedByOwner: true, provenance: "owner decision" } });
   cases.push(["an owner-locked price builds a canonical challenge", built.state === "CHALLENGE_BUILT" && typeof built.challenge.id === "string"]);
   const again = locked.challengeFor({ resource: "/v1/verify", quote: { amountCents: 500, lockedByOwner: true, provenance: "owner decision" } });
