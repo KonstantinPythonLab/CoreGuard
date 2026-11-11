@@ -93,15 +93,27 @@ function listScannerFiles() {
   );
 }
 
+/**
+ * Markdown decoration is not part of a number. A claim wrapped in backticks or
+ * emphasis — `` `1405/1405` `` passing — is still a claim, and the first version
+ * of this scanner missed exactly that form: ONE-PAGER.md carried a stale 1405
+ * inside backticks while every assertion stayed green. Normalizing decoration
+ * before matching closes the blind spot; the control below proves it bites.
+ */
+export function normalizeForScan(line) {
+  return String(line).replace(/[`*_~]/g, "").replace(/\u00a0/g, " ");
+}
+
 /** The claim-scanner, exported for the mutation controls (C32/C35 discipline). */
 export function scanContent(relPath, content) {
   const offenders = [];
   const lines = String(content).split(/\r?\n/);
   lines.forEach((line, i) => {
+    const scannable = normalizeForScan(line);
     for (const shape of SHAPES) {
       const rx = new RegExp(shape.source, shape.flags);
       let m;
-      while ((m = rx.exec(line)) !== null) {
+      while ((m = rx.exec(scannable)) !== null) {
         offenders.push({ file: relPath, line: i + 1, claim: m[0].trim().replace(/\s+/g, " "), numbers: m.slice(1).filter(Boolean).map(Number) });
       }
     }
@@ -183,6 +195,28 @@ test("[controls] the allowlist branch is exercised, not just declared", () => {
   const flagged = scanContent("docs/funding-one-pager-2026-09.md", text);
   assert.equal(flagged.length, 1, "the scanner itself always flags legacy numbers");
   assert.ok(ALLOWED.has("docs/funding-one-pager-2026-09.md"), "the dated instrument must be in the allowlist for the live scan to skip it");
+});
+
+test("[controls] markdown decoration cannot hide a stale claim (the ONE-PAGER blind spot)", () => {
+  // Measured defect: `docs/ONE-PAGER.md` shipped "`1405/1405` passing" — the
+  // backtick sat between the number and the word, so the old shape `\d+/\d+\s+passing`
+  // never matched and the guard could not fail. It must bite now.
+  const decorated = [
+    "- **Tests**: `1405/1405` passing (local)",
+    "Tests: **1405 / 1405** passing",
+    "the suite is _1405_ tests today",
+  ];
+  for (const sample of decorated) {
+    const found = scanContent("docs/CONTROL-DECORATED.md", sample);
+    assert.ok(found.length >= 1, `decorated claim escaped the scanner: ${sample}`);
+    assert.ok(found.some((h) => h.numbers.some((n) => n !== TOTAL)),
+      `decorated claim did not refuse the snapshot total: ${sample}`);
+  }
+  // And the same decoration on the TRUE total yields no OFFENDER (the scanner
+  // reports hits; only numbers that differ from the snapshot are a failure).
+  const ok = scanContent("docs/CONTROL-DECORATED.md", `- **Tests**: \`${TOTAL}/${TOTAL}\` passing`);
+  assert.ok(ok.every((h) => h.numbers.every((n) => n === TOTAL)),
+    "a decoration-wrapped true total must never be an offender");
 });
 
 test("[controls] a claim in a live doc with a deliberately stale number fails by name", () => {

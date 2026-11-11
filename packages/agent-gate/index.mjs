@@ -473,7 +473,10 @@ export function verifyReceipt({ receipt, publicKeyPem } = {}) {
   }
 
   if (findings.length > 0) {
-    const tampered = findings.some((f) => /SIGNATURE_INVALID|MISMATCH|NOT_REPRODUCIBLE|REFUSED_BUT_SUBMITTED/.test(f.id));
+    // A receipt that CLAIMS a submitted execution which does not conform is not
+    // an unknown state — it is evidence that what was submitted diverged from
+    // what was authorized. That is tampering, and it must read as such.
+    const tampered = findings.some((f) => /SIGNATURE_INVALID|MISMATCH|NOT_REPRODUCIBLE|REFUSED_BUT_SUBMITTED|SUBMITTED_WITHOUT_CONFORMANCE/.test(f.id));
     return { status: tampered ? VERIFY_STATUS.TAMPERED : VERIFY_STATUS.UNKNOWN, findings };
   }
 

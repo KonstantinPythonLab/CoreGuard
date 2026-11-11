@@ -15,7 +15,7 @@ users, adoption, or outcomes.
 
 ## 1. Honest baseline (what stands today, machine-measured)
 
-- The measured state is the committed snapshot: `testsTotal` 1526, enforced by
+- The measured state is the committed snapshot: `testsTotal` 1539, enforced by
   CI on every push; every reviewer-facing number reproduces from a clean clone.
 - Community signal, same day: PR #51 (Stellar DEX integration) and PR #52
   (contributor program hub) merged; PR #53 rejected (a one-line change whose

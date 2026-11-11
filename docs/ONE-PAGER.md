@@ -13,12 +13,12 @@ CoreGuard is a **fail-closed verification layer**. It binds agreement → execut
 - **Refusal audit**: every refusal is recorded with reason/code (no secrets/keys) for proof without exposing sensitive data.
 
 ## Proof (from the committed tree)
-- **Tests**: `1405/1405` passing (local)
+- **Tests**: `npm test` — the pass total is machine-pinned in `docs/state-snapshot.json`; a drift is a red build. No number is duplicated here, so this line cannot go stale.
 - **Boundary audit**: `npm run boundary:audit` — PASS
 - **Release gate**: `npm run release:gate` — GATE_PASS (18/18 legs)
 - **Claims**: `npm run claims:audit` — PASS (committed artifact bound)
 - **Primitives**: `packages/budget/`, `packages/acceptance/`, `packages/job-integration/`, `packages/x402/` wired with `refuse-before-sign`
-- **Killer features**: Budget Waterfall, Reservation Timeline, Acceptance Evidence Bundle, "UNKNOWN stays HELD" explainer, Deterministic replay
+- **Engineering primitives**: Budget Waterfall, Reservation Timeline, Acceptance Evidence Bundle, the "UNKNOWN stays HELD" explainer, Deterministic replay
 
 ## What this is NOT
 No claims of live mainnet, live payments, revenue, funding, partnership, badge, certification, or external authorization. These remain gated/unknown per the repo's fail-closed rules.

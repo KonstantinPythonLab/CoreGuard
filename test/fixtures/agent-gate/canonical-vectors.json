@@ -1,0 +1,59 @@
+{
+  "schema": "AGENT-GATE-REPLAY-VECTOR/1",
+  "inputs": {
+    "now": "2026-11-10T14:00:00.000Z",
+    "seedHex": "9f2c1d7b3a5e6081c4d9e2f7a0b3c6d5e8f1a4b7c0d3e6f90213243546576879",
+    "merchant": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+    "sequence": "1",
+    "amount": "80",
+    "maxTime": 1794319200,
+    "intent": {
+      "agentId": "agent-replay",
+      "source": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+      "destination": "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR",
+      "amount": "80",
+      "asset": "XLM",
+      "network": "testnet",
+      "memo": null,
+      "createdAt": "2026-11-10T13:59:30.000Z",
+      "expiresAt": "2026-11-10T14:05:00.000Z",
+      "nonce": 1
+    },
+    "policy": {
+      "version": "AGENT-POLICY/1",
+      "network": "testnet",
+      "agents": [
+        "agent-replay"
+      ],
+      "assets": [
+        "XLM"
+      ],
+      "recipients": [
+        "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR"
+      ],
+      "perTxMax": "100",
+      "windowMax": "250",
+      "windowSpent": "0",
+      "windowId": "2026-11",
+      "requireMemo": false
+    }
+  },
+  "expected": {
+    "versions": {
+      "gate": "AGENT-GATE/1",
+      "receipt": "AGENT-RECEIPT/1"
+    },
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEATy9Fga2KjmN5ZcPsYlC30J62gKXMI74BPGgsUQZn1zw=\n-----END PUBLIC KEY-----\n",
+    "envelopeXdr": "AAAAAgAAAAAQfdFrLDgzSIIugR73qs8U0ZiKbwBUclTTPh5thlbgnAAAAGQAAAAAAAAAAgAAAAEAAAAAAAAAAAAAAABq8yNgAAAAAAAAAAEAAAAAAAAAAQAAAAAQfdFrLDgzSIIugR73qs8U0ZiKbwBUclTTPh5thlbgnAAAAAAAAAAAL68IAAAAAAAAAAAA",
+    "envelopeTxHash": "04e9526bbe6fd2be1803fbdf8e91b5f0f9e14a161fe2f3edd16ba60909491b8d",
+    "canonicalIntent": "{\"agentId\":\"agent-replay\",\"amount\":\"80\",\"asset\":\"XLM\",\"createdAt\":\"2026-11-10T13:59:30.000Z\",\"destination\":\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\",\"expiresAt\":\"2026-11-10T14:05:00.000Z\",\"memo\":null,\"network\":\"testnet\",\"nonce\":1,\"source\":\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\"}",
+    "intentDigest": "sha256:31c2b62a3312b8d1ce8cc43ba3914f1b2668b0cb2127f827b2ba70835d536e5e",
+    "policyDigest": "sha256:b2345d93ab72c0f56cf6a761d3ed875b37206d058bf860787f522b4f2c351d7f",
+    "canonicalSubject": "{\"execution\":{\"intentDigest\":null,\"network\":\"testnet\",\"operations\":[{\"amount\":\"80.0000000\",\"asset\":\"XLM\",\"destination\":\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\",\"memo\":null,\"source\":\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\",\"type\":\"payment\"}],\"status\":\"BUILT\",\"txHash\":\"04e9526bbe6fd2be1803fbdf8e91b5f0f9e14a161fe2f3edd16ba60909491b8d\"},\"intent\":{\"agentId\":\"agent-replay\",\"amount\":\"80\",\"asset\":\"XLM\",\"createdAt\":\"2026-11-10T13:59:30.000Z\",\"destination\":\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\",\"expiresAt\":\"2026-11-10T14:05:00.000Z\",\"memo\":null,\"network\":\"testnet\",\"nonce\":1,\"source\":\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\"},\"policy\":{\"agents\":[\"agent-replay\"],\"assets\":[\"XLM\"],\"network\":\"testnet\",\"perTxMax\":\"100\",\"recipients\":[\"GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR\"],\"requireMemo\":false,\"version\":\"AGENT-POLICY/1\",\"windowId\":\"2026-11\",\"windowMax\":\"250\",\"windowSpent\":\"0\"}}",
+    "receiptId": "sha256:7832aea76de69159bf2bc2e6499a30ed24a05a203436582531709d758b362f12",
+    "signature": "EVmSya/fFhPo7dJj1yEPS4Y0XgUa0VeVUxssIbc3SMVNZiVaKd68FtFSSMmjFGWpENyDAC71eoQ0fhrSgfk+Ag==",
+    "receiptSha256": "sha256:3d2fd7b3105be24366f240eac994c498f388a15def5a3af547e2167299d8c823",
+    "conformanceVerdict": "VERIFIED"
+  },
+  "ceiling": "OFFLINE_RECOMPUTATION — byte stability across runs and runtimes; not a chain read, not an audit"
+}

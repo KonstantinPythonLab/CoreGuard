@@ -149,10 +149,17 @@ export function decodeEnvelope({ xdr, network = "testnet" } = {}) {
  */
 export function buildPaymentEnvelope({
   source, sequence, destination, amount, asset = "XLM", memo = null,
-  network = "testnet", fee = "100", timeoutSeconds = 180,
+  network = "testnet", fee = "100", timeoutSeconds = 180, maxTime = null,
 } = {}) {
   const passphrase = NETWORK_PASSPHRASE[network];
   if (!passphrase) return { ok: false, error: `unknown network: ${network}` };
+  // `maxTime` (unix seconds) makes a prepared envelope REPRODUCIBLE: the default
+  // path derives the time bound from the wall clock, so two runs of the same
+  // fields produce different bytes and a different transaction hash. Replay and
+  // golden-vector work needs the explicit bound; real flows may keep the default.
+  if (maxTime !== null && !(Number.isInteger(maxTime) && maxTime > 0)) {
+    return { ok: false, error: "maxTime must be a positive integer of unix seconds" };
+  }
 
   if (looksLikeSecretKey(source)) {
     return { ok: false, error: "source must be a PUBLIC key — this module never accepts a secret" };
@@ -182,8 +189,9 @@ export function buildPaymentEnvelope({
       fee: String(fee),
       networkPassphrase: passphrase,
     })
-      .addOperation(Stellar.Operation.payment({ destination, asset: assetObject, amount: String(amount) }))
-      .setTimeout(timeoutSeconds);
+      .addOperation(Stellar.Operation.payment({ destination, asset: assetObject, amount: String(amount) }));
+    if (maxTime === null) builder.setTimeout(timeoutSeconds);
+    else builder.setTimebounds(0, maxTime);
     if (memo) builder.addMemo(Stellar.Memo.text(String(memo)));
     const tx = builder.build();
     const hashBytes = tx.hash();

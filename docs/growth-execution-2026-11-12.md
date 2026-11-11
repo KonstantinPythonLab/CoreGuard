@@ -15,11 +15,11 @@ adoption, partnerships, or outcomes.
 
 ## 1. Honest baseline (what stands today, machine-measured)
 
-- The committed snapshot (`docs/state-snapshot.json`) pins `testsTotal` 1526, with
+- The committed snapshot (`docs/state-snapshot.json`) pins `testsTotal` 1539, with
   `boundaryAudit` at 0 violations and `docsNode` at 132 executed / 79 skip-listed /
   29 docs covered. CI is green on the final delivery-kit push of the authorized-lane
   cycle (`7be2d5c`: ESCROW/1 bounty-escrow mirror, owner click-runbook, suite-count
-  move to 1526). Full suite 1526/1526 pass; prepush 6/6 PASS.
+  move to 1539). Full suite 1539/1539 pass; prepush 6/6 PASS.
 - The authorized-lane delivery cycle closed on 2026-11-10: the mainnet refusal was
   decoded from its own committed bytes to `txInsufficientBalance` (-7) - deterministic,
   not transient - and the runner was upgraded with the pre-send fee-solvency gate and
@@ -135,11 +135,11 @@ adoption, partnerships, or outcomes.
 
 ## 1. Honest baseline (what stands today, machine-measured)
 
-- The committed snapshot (`docs/state-snapshot.json`) pins `testsTotal` 1526, with
+- The committed snapshot (`docs/state-snapshot.json`) pins `testsTotal` 1539, with
   `boundaryAudit` at 0 violations and `docsNode` at 132 executed / 79 skip-listed /
   29 docs covered. CI is green on the final delivery-kit push of the authorized-lane
   cycle (`7be2d5c`: ESCROW/1 bounty-escrow mirror, owner click-runbook, suite-count
-  move to 1526). Full suite 1526/1526 pass; prepush 6/6 PASS.
+  move to 1539). Full suite 1539/1539 pass; prepush 6/6 PASS.
 - The authorized-lane delivery cycle closed on 2026-11-10: the mainnet refusal was
   decoded from its own committed bytes to `txInsufficientBalance` (-7) - deterministic,
   not transient - and the runner was upgraded with the pre-send fee-solvency gate and
