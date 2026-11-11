@@ -7,25 +7,26 @@ pragma solidity ^0.8.24;
  * The unit suite (EvidenceRegistryV3.t.sol) proves one example per rule. This
  * file tries to break the same contract over SEQUENCES of calls and over whole
  * input ranges, because the security claim of Core 1116 is not "each rule
- * fires once" but "no sequence of anchors, commits and withdrawals can ever
- * land a record that the contract did not authorize":
+ * fires once" but "no sequence of commits, anchors and withdrawals can land a
+ * record the contract did not authorize":
  *
- *   - write-once: an intentId / proofId that is committed once can never be
- *     rewritten or re-pointed (replay resistance is a state property, not a
- *     single revert);
+ *   - write-once: an intentId / proofId committed once can never be rewritten
+ *     or re-pointed (replay resistance is a state property, not one revert);
  *   - binding: a stored proof always still names the intent commitment it was
- *     anchored against — a proof can never be re-attributed to another intent;
+ *     anchored against — it can never be re-attributed to another intent;
  *   - accounting: treasuryBalance is EXACTLY the sum of the commissions the
  *     contract actually collected, and the contract always holds at least that
  *     much (no phantom withdrawable value, no stranded value);
- *   - authorization: digest signing is bound to chainId, verifyingContract and
- *     every field, so a signature minted for any other tuple is refused.
+ *   - authorization: signing is bound to chainId, verifyingContract and every
+ *     field, so a signature minted for any other tuple is refused.
  *
- * No forge-std: the suite keeps the repo's local `Vm` interface + require()
- * discipline so `forge test` needs no submodule. Invariants are discovered by
- * prefix (`invariant_`) and driven through a handler that is registered with
- * `vm.targetContract`, so every fuzz call goes through the same public surface
- * an attacker would use.
+ * No forge-std on purpose: the suite keeps the repo's local `Vm` interface and
+ * require() discipline, so `forge test` needs no submodule. The action
+ * functions live ON the invariant test contract because that contract is the
+ * invariant runner's default target — this avoids depending on the
+ * `targetContract` cheatcode, which older/newer forge builds disagree about.
+ * The test contract is also the registry's `feeTo`, so the withdraw path is
+ * reachable by the same fuzzer.
  *
  * Run (CI, contracts job):  forge test --match-path "test/contract/*"
  * Invariants only:          forge test --match-path "test/contract/*invariant*"
@@ -39,39 +40,27 @@ interface Vm {
     function warp(uint256) external;
     function chainId(uint256) external;
     function deal(address, uint256) external;
-    function targetContract(address) external;
     function expectRevert(bytes4) external;
     function expectRevert(bytes calldata) external;
 }
 
 /* ------------------------------------------------------------------------- */
-/* Handler: the ONLY door the invariant runner gets into the contract        */
+/* Stateful invariants — the test contract IS the handler                    */
 /* ------------------------------------------------------------------------- */
 
-/**
- * Every state-changing path goes through here, exactly as an attacker or an
- * honest payer would call it. The handler is the contract's `feeTo` (it
- * deploys the registry with itself as treasury) so the withdraw path is
- * exercised by the same actor, and it keeps a ghost ledger that the invariants
- * compare against storage.
- *
- * Reverts are swallowed on purpose: the handler's job is to explore legal and
- * illegal call sequences, not to fail the run. Whether a revert SHOULD have
- * happened is covered by the fuzz tests below, which assert the exact error.
- */
-contract V3Handler {
+contract EvidenceRegistryV3InvariantTest {
     Vm internal constant vm = Vm(address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D));
 
     bytes32 internal constant VERIFIER_V1 = keccak256("cg-verifier/0.1.0");
-    uint256 internal constant ACTORS = 3;
+    uint256 internal constant WINDOW = 20; // bounded scan: last 20 records per invariant
 
     EvidenceRegistryV3 public registry;
     uint256 public fee;
 
-    address[ACTORS] public actors;
-    uint256[ACTORS] public keys;
+    address[3] public actors;
+    uint256[3] public keys;
 
-    // Ghost ledger: what the handler BELIEVES it wrote, in call order.
+    // Ghost ledger: what this contract BELIEVES it wrote, in call order.
     uint256 public commits;
     uint256 public anchors;
     uint256 public withdrawals;
@@ -88,17 +77,33 @@ contract V3Handler {
     mapping(bytes32 => bytes32) public ghostProofIntent;
     mapping(bytes32 => address) public ghostProofSigner;
 
-    constructor(address[ACTORS] memory a, uint256[ACTORS] memory k) {
-        actors = a;
+    function setUp() public {
+        uint256[3] memory k;
+        address[3] memory a;
+        k[0] = 0x10;
+        k[1] = 0x11;
+        k[2] = 0x12;
+        a[0] = vm.addr(k[0]);
+        a[1] = vm.addr(k[1]);
+        a[2] = vm.addr(k[2]);
+
         keys = k;
+        actors = a;
         fee = 0.1 ether;
+        // This contract is the registry's treasury: the withdraw path stays reachable.
         registry = new EvidenceRegistryV3(address(this), fee);
+        vm.deal(address(this), 10_000 ether);
     }
 
     receive() external payable {}
 
+    /* ----------------------------- actions ------------------------------ */
+
+    /// @dev Commits an intent for a fuzzed actor / id / window. Reverts are
+    ///      the contract's own refusals and are ignored by the invariant runner
+    ///      (fail_on_revert = false), so illegal sequences are explored too.
     function commit(uint256 actorSeed, bytes32 intentSeed, uint256 ttlSeed) external {
-        uint256 i = actorSeed % ACTORS;
+        uint256 i = actorSeed % 3;
         bytes32 intentId = intentSeed;
         uint256 validUntil = block.timestamp + (ttlSeed % 10_000) + 1;
         address signer = actors[i];
@@ -128,6 +133,9 @@ contract V3Handler {
         ghostValidUntil[intentId] = validUntil;
     }
 
+    /// @dev Anchors a proof against an intent this run actually committed, paying
+    ///      exactly the flat fee. Unknown intents are skipped here; the fuzz
+    ///      suite asserts that the contract refuses them by name.
     function anchor(
         uint256 proofSeed,
         uint256 intentSeed,
@@ -136,7 +144,7 @@ contract V3Handler {
     ) external {
         bytes32 intentId = bytes32(intentSeed);
         address signer = ghostSigner[intentId];
-        if (signer == address(0)) return; // only anchor intents this handler actually committed
+        if (signer == address(0)) return;
 
         bytes32 proofId = bytes32(proofSeed);
         bytes32 receiptId = keccak256(abi.encodePacked(bytes32(receiptSeed)));
@@ -170,6 +178,8 @@ contract V3Handler {
         ghostProofSigner[proofId] = signer;
     }
 
+    /// @dev Withdraws the collected commission to a fuzzed address. This
+    ///      contract is `feeTo`, so the only guard exercised is the payout path.
     function withdraw(uint256 toSeed) external {
         address to = address(uint160(uint256(keccak256(abi.encodePacked(toSeed)))));
         (bool ok, ) = address(registry).call(
@@ -177,58 +187,15 @@ contract V3Handler {
         );
         if (!ok) return;
         withdrawals += 1;
-        collected = 0; // the withdraw path empties the whole ledger
+        collected = 0; // a successful withdraw empties the whole ledger
     }
 
-    function intentCount() external view returns (uint256) {
-        return intentIds.length;
-    }
-
-    function proofCount() external view returns (uint256) {
-        return proofIds.length;
-    }
-
-    function _sign(bytes32 digest, uint256 key) internal returns (bytes memory) {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
-        return abi.encodePacked(r, s, v);
-    }
-}
-
-/* ------------------------------------------------------------------------- */
-/* Stateful invariants                                                       */
-/* ------------------------------------------------------------------------- */
-
-contract EvidenceRegistryV3InvariantTest {
-    Vm internal constant vm = Vm(address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D));
-
-    V3Handler internal handler;
-    EvidenceRegistryV3 internal registry;
-
-    uint256 internal constant WINDOW = 20; // bounded scan keeps the invariant O(1)-ish per run
-
-    function setUp() public {
-        uint256[3] memory keys;
-        address[3] memory actors;
-        keys[0] = 0x10;
-        keys[1] = 0x11;
-        keys[2] = 0x12;
-        actors[0] = vm.addr(keys[0]);
-        actors[1] = vm.addr(keys[1]);
-        actors[2] = vm.addr(keys[2]);
-
-        handler = new V3Handler(actors, keys);
-        registry = handler.registry();
-        vm.deal(address(handler), 10_000 ether);
-        vm.targetContract(address(handler));
-    }
+    /* ---------------------------- invariants ---------------------------- */
 
     /// @dev No phantom money: the ledger equals what was actually collected,
     ///      and the contract always holds at least the withdrawable amount.
     function invariant_treasuryIsExactlyTheCommissionLedger() public view {
-        require(
-            registry.treasuryBalance() == handler.collected(),
-            "treasury ledger != collected commissions"
-        );
+        require(registry.treasuryBalance() == collected, "treasury ledger != collected commissions");
         require(
             address(registry).balance >= registry.treasuryBalance(),
             "contract balance is below its own ledger"
@@ -237,24 +204,24 @@ contract EvidenceRegistryV3InvariantTest {
 
     /// @dev Write-once: a committed intent never changes commitment, signer or window.
     function invariant_intentsAreImmutableOnceCommitted() public view {
-        uint256 n = handler.intentCount();
+        uint256 n = intentIds.length;
         uint256 start = n > WINDOW ? n - WINDOW : 0;
         for (uint256 i = start; i < n; i++) {
-            bytes32 id = handler.intentIds(i);
+            bytes32 id = intentIds[i];
             (bytes32 commitment, , , uint256 validUntil, address signer) = registry.intentCommits(id);
-            require(commitment == handler.ghostCommitment(id), "intent commitment was rewritten");
-            require(signer == handler.ghostSigner(id), "intent signer was rewritten");
-            require(validUntil == handler.ghostValidUntil(id), "intent window was rewritten");
+            require(commitment == ghostCommitment[id], "intent commitment was rewritten");
+            require(signer == ghostSigner[id], "intent signer was rewritten");
+            require(validUntil == ghostValidUntil[id], "intent window was rewritten");
         }
     }
 
     /// @dev A proof keeps naming the intent commitment it was anchored against,
-    ///      the receipt it carried, its result code and the exact fee.
+    ///      the receipt it carried, its result code and the exact fee paid.
     function invariant_anchorsStayBoundToTheirIntent() public view {
-        uint256 n = handler.proofCount();
+        uint256 n = proofIds.length;
         uint256 start = n > WINDOW ? n - WINDOW : 0;
         for (uint256 i = start; i < n; i++) {
-            bytes32 proofId = handler.proofIds(i);
+            bytes32 proofId = proofIds[i];
             (
                 bytes32 receiptId,
                 bytes32 intentCommitment,
@@ -266,39 +233,45 @@ contract EvidenceRegistryV3InvariantTest {
                 uint256 commissionPaid
             ) = registry.proofAnchors(proofId);
 
-            require(receiptId == handler.ghostProofReceipt(proofId), "proof receipt was rewritten");
-            require(result == handler.ghostProofResult(proofId), "proof result was rewritten");
-            require(signer == handler.ghostProofSigner(proofId), "proof signer was rewritten");
+            require(receiptId == ghostProofReceipt[proofId], "proof receipt was rewritten");
+            require(result == ghostProofResult[proofId], "proof result was rewritten");
+            require(signer == ghostProofSigner[proofId], "proof signer was rewritten");
             require(
-                intentCommitment ==
-                    handler.ghostCommitment(handler.ghostProofIntent(proofId)),
+                intentCommitment == ghostCommitment[ghostProofIntent[proofId]],
                 "proof is no longer bound to its intent commitment"
             );
-            require(commissionPaid == handler.fee(), "commission not recorded exactly");
+            require(commissionPaid == fee, "commission not recorded exactly");
             require(anchoredAt <= block.timestamp, "anchor timestamp is in the future");
             require(result <= uint8(EvidenceRegistryV3.ProofResult.UNVERIFIED), "result out of range");
         }
     }
 
-    /// @dev No orphan proof: every stored anchor points at an intent this
-    ///      handler committed and that still exists.
+    /// @dev No orphan proof: every stored anchor points at an intent that still
+    ///      exists with a commitment this run wrote.
     function invariant_noAnchorWithoutItsIntent() public view {
-        uint256 n = handler.proofCount();
+        uint256 n = proofIds.length;
         uint256 start = n > WINDOW ? n - WINDOW : 0;
         for (uint256 i = start; i < n; i++) {
-            bytes32 proofId = handler.proofIds(i);
-            bytes32 intentId = handler.ghostProofIntent(proofId);
+            bytes32 proofId = proofIds[i];
+            bytes32 intentId = ghostProofIntent[proofId];
             (bytes32 commitment, , , , address signer) = registry.intentCommits(intentId);
             require(signer != address(0), "anchor points at a non-existent intent");
             require(commitment != bytes32(0), "anchored intent has no commitment");
         }
     }
 
-    /// @dev Version and domain are construction constants, never mutable state.
+    /// @dev Version, domain and feeTo are construction constants, never mutable state.
     function invariant_versionAndDomainArePinned() public view {
         require(registry.VERSION() == registry.VERSION_KECCAK(), "VERSION is not pinned");
         require(registry.domainSeparator() != bytes32(0), "domain separator is empty");
-        require(registry.feeTo() == address(handler), "feeTo drifted from construction");
+        require(registry.feeTo() == address(this), "feeTo drifted from construction");
+    }
+
+    /* ------------------------------ helpers ------------------------------ */
+
+    function _sign(bytes32 digest, uint256 key) internal returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
+        return abi.encodePacked(r, s, v);
     }
 }
 
@@ -328,8 +301,8 @@ contract EvidenceRegistryV3FuzzTest {
 
     /* ---------------------------- commission ----------------------------- */
 
-    /// @dev The commission is exact: every value but the flat fee is refused
-    ///      by name, and the accepted one lands in the ledger untouched.
+    /// @dev The commission is exact: every value but the flat fee is refused by
+    ///      name, and the accepted one lands in the ledger untouched.
     function testFuzz_anchorRequiresExactlyTheFlatFee(uint256 provided) public {
         provided = provided % (2 ether);
         bytes32 intentId = keccak256("intent-fee");
@@ -372,8 +345,9 @@ contract EvidenceRegistryV3FuzzTest {
 
     /* ---------------------------- result code ---------------------------- */
 
-    /// @dev VALID/INVALID/UNVERIFIED are the only storable codes; anything
-    ///      wider is refused before it can enter the mapping.
+    /// @dev VALID/INVALID/UNVERIFIED are the only storable codes; anything wider
+    ///      is refused before it can enter the mapping, and the accepted code is
+    ///      stored verbatim.
     function testFuzz_resultCodeIsBounded(uint8 result) public {
         bytes32 intentId = keccak256("intent-result");
         _commit(intentId, NOW + 1000, keccak256("commitment-result"));
@@ -475,7 +449,9 @@ contract EvidenceRegistryV3FuzzTest {
         uint8 field
     ) public {
         uint256 validUntil = NOW + (uint256(ttl) % 100_000) + 1;
-        bytes32 tamperedId = field % 3 == 0 ? keccak256(abi.encodePacked(intentId, "id")) : intentId;
+        bytes32 tamperedId = field % 3 == 0
+            ? keccak256(abi.encodePacked(intentId, "id"))
+            : intentId;
         bytes32 tamperedCommitment = field % 3 == 1
             ? keccak256(abi.encodePacked(commitment, "commitment"))
             : commitment;
@@ -497,8 +473,8 @@ contract EvidenceRegistryV3FuzzTest {
         require(stored == commitment && signer == alice, "honest commit did not land");
     }
 
-    /// @dev The EIP-712 domain binds chainId: a signature for another chain
-    ///      never authorizes this one, and the honest chain still works.
+    /// @dev The EIP-712 domain binds chainId: a signature for another chain never
+    ///      authorizes this one, and the honest chain still works.
     function testFuzz_domainIsBoundToTheChainId(uint64 otherChainSeed) public {
         uint256 homeChain = 1116;
         uint256 otherChain = homeChain + 1 + (uint256(otherChainSeed) % 100_000);
@@ -525,8 +501,8 @@ contract EvidenceRegistryV3FuzzTest {
         );
     }
 
-    /// @dev An anchor for an intent that was never committed is refused, and
-    ///      the refusal names the intent — never a silent no-op.
+    /// @dev An anchor for an intent that was never committed is refused, and the
+    ///      refusal names the intent — never a silent no-op.
     function testFuzz_anchorForAnUnknownIntentIsRefused(bytes32 intentId) public {
         bytes32 proofId = keccak256(abi.encodePacked("proof-orphan", intentId));
         bytes32 receiptId = keccak256("receipt-orphan");
@@ -590,7 +566,14 @@ contract EvidenceRegistryV3FuzzTest {
     ) internal returns (bytes memory) {
         return
             _sign(
-                registry.anchorProofDigest(proofId, intentId, receiptId, commitment, result, VERIFIER_V1),
+                registry.anchorProofDigest(
+                    proofId,
+                    intentId,
+                    receiptId,
+                    commitment,
+                    result,
+                    VERIFIER_V1
+                ),
                 ALICE_KEY
             );
     }
