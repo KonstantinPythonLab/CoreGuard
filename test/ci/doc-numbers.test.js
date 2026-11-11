@@ -61,6 +61,7 @@ const ALLOWED = new Set([
   "docs/current-state-audit-2026-09-25.md",
   "docs/elizaos-thread-replies-record-2026-09-23.md",
   "docs/funding-one-pager-2026-09.md",
+  "docs/growth-execution-2026-11-11.md", // dated instrument: funding map + Wave/SCF timing verified 2026-11-11 (this push)
   "docs/master-launch-adoption-plan-v2-2026-09-25.md",
   "docs/owner-decisions-and-claimable-facts-2026-09.md",
   "docs/phase-a-people-court-followup-draft-2026-09-25.md",

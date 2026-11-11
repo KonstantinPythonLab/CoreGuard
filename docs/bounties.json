@@ -76,7 +76,7 @@
     },
     {
       "id": "CG-BTY-004",
-      "issue": null,
+      "issue": 30,
       "title": "Fuzz/property tests for canonicalization/verifier",
       "track": "Security & Correctness",
       "status": "OPEN",
@@ -97,7 +97,7 @@
     },
     {
       "id": "CG-BTY-005",
-      "issue": null,
+      "issue": 54,
       "title": "Technical deep-dives & demo videos",
       "track": "Ecosystem Content",
       "status": "OPEN",
@@ -118,7 +118,7 @@
     },
     {
       "id": "CG-BTY-006",
-      "issue": null,
+      "issue": 32,
       "title": "CI/Tooling: reproducibility & supply-chain hardening",
       "track": "CI/Tooling",
       "status": "OPEN",
@@ -128,6 +128,29 @@
         "Reproducible build verification",
         "Supply-chain hardening (SBOM, sigstore)",
         "Developer ergonomics improvements"
+      ],
+      "pr": null,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "UNFUNDED"
+      }
+    },
+    {
+      "id": "CG-BTY-007",
+      "issue": 55,
+      "title": "On-chain bounty escrow contract (Soroban)",
+      "track": "Smart Contracts",
+      "status": "OPEN",
+      "claimer": null,
+      "claimedAt": null,
+      "acceptanceCriteria": [
+        "Soroban escrow contract compiles and tests in the CI soroban-rust job",
+        "JS mirror with known-answer vector for cross-language parity",
+        "Fail-closed lifecycle: fund, claim, deliver, verify, release, refund",
+        "Negative suite: tampered digest, wrong contributor, double release, missing evidence",
+        "Bilingual documentation and manifest/docs sync in the same push"
       ],
       "pr": null,
       "mergedAt": null,
