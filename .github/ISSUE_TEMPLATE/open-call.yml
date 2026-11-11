@@ -1,0 +1,61 @@
+name: Open Call / Discussion
+description: Start a discussion for a new bounty, feature, or research topic
+title: "[OPEN CALL] <topic>"
+labels: ["open-call", "discussion"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for proposing new bounty tracks, research directions, or community initiatives. This is NOT a claim — it's a discussion starter.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - New bounty track proposal
+        - Research / deep-dive idea
+        - Integration / partnership suggestion
+        - Tooling / infra improvement
+        - Community / governance topic
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Your proposal
+      description: What are you proposing and why? Include context, links, and any prior art.
+      placeholder: |
+        I'd like to propose a new bounty track for...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Estimated scope & deliverables
+      description: What would the output look like? How would we verify it?
+      placeholder: |
+        Deliverable: ...
+        Verification: ...
+
+  - type: textarea
+    id: resources
+    attributes:
+      label: Resources needed
+      description: Funding, compute, data access, review time, etc.
+      placeholder: |
+        - Review time: ~2h
+        - Funding: $X (if applicable)
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: This is a discussion, not a claim — I understand no work is committed yet
+          required: true
+        - label: I've checked existing issues/discussions to avoid duplicates
+          required: true

@@ -1,0 +1,159 @@
+{
+  "version": "1.0.0",
+  "description": "CoreGuard bounty/contributor program manifest. Track all bounty claims, acceptance criteria, and status. Update on every claim/merge.",
+  "schema": "coreguard.bounties/1",
+  "bounties": [
+    {
+      "id": "CG-BTY-001",
+      "issue": 26,
+      "title": "Stellar DEX integration example",
+      "track": "Integrations",
+      "status": "CLAIMED",
+      "claimer": "granbellllc-png",
+      "claimedAt": "2026-11-11",
+      "acceptanceCriteria": [
+        "End-to-end fail-closed pipeline for Soroban DEX swaps",
+        "Preflight gating with DEX-GATE/1 and SOROBAN-DEX/1",
+        "Cryptographic receipt at VERIFIED level",
+        "DDE/1 bilateral delivery boundary",
+        "Soroban commitment anchor planned via anchor-local.ps1",
+        "Independent offline verifier (deterministic, no RPC)",
+        "5-scenario test suite (valid, front-run, redirect, tampered, trace substitution)",
+        "Bilingual documentation (EN/AR)",
+        "Products registry entry with honest status"
+      ],
+      "pr": 51,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "PENDING_FUNDING"
+      }
+    },
+    {
+      "id": "CG-BTY-002",
+      "issue": 27,
+      "title": "Stellar wallet integration example",
+      "track": "Integrations",
+      "status": "OPEN",
+      "claimer": null,
+      "claimedAt": null,
+      "acceptanceCriteria": [
+        "Freighter / WalletConnect integration example",
+        "Signing flow verified through STELLAR-AGENT/1 gate",
+        "Deterministic intent → policy → execution trace",
+        "Evidence bundle for offline verification"
+      ],
+      "pr": null,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "UNFUNDED"
+      }
+    },
+    {
+      "id": "CG-BTY-003",
+      "issue": 28,
+      "title": "Reviewer kit improvements & `--verify` runners",
+      "track": "Verification & DX",
+      "status": "OPEN",
+      "claimer": null,
+      "claimedAt": null,
+      "acceptanceCriteria": [
+        "Improved reviewer kit with step-by-step guide",
+        "`--verify` CLI surface for external verification",
+        "Docs / tutorials in EN and AR",
+        "Sample apps demonstrating verification flows"
+      ],
+      "pr": null,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "UNFUNDED"
+      }
+    },
+    {
+      "id": "CG-BTY-004",
+      "issue": null,
+      "title": "Fuzz/property tests for canonicalization/verifier",
+      "track": "Security & Correctness",
+      "status": "OPEN",
+      "claimer": null,
+      "claimedAt": null,
+      "acceptanceCriteria": [
+        "Property-based tests for canonical encoding",
+        "Negative-case corpus for verifier",
+        "Threat-model writeups (audit-prep)"
+      ],
+      "pr": null,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "UNFUNDED"
+      }
+    },
+    {
+      "id": "CG-BTY-005",
+      "issue": null,
+      "title": "Technical deep-dives & demo videos",
+      "track": "Ecosystem Content",
+      "status": "OPEN",
+      "claimer": null,
+      "claimedAt": null,
+      "acceptanceCriteria": [
+        "Deep-dive article on execution receipts (CGEP/1)",
+        "Demo video script for CoreGuard verify-run",
+        "Integration guide for Freighter / Soroban DEXs / anchors"
+      ],
+      "pr": null,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "UNFUNDED"
+      }
+    },
+    {
+      "id": "CG-BTY-006",
+      "issue": null,
+      "title": "CI/Tooling: reproducibility & supply-chain hardening",
+      "track": "CI/Tooling",
+      "status": "OPEN",
+      "claimer": null,
+      "claimedAt": null,
+      "acceptanceCriteria": [
+        "Reproducible build verification",
+        "Supply-chain hardening (SBOM, sigstore)",
+        "Developer ergonomics improvements"
+      ],
+      "pr": null,
+      "mergedAt": null,
+      "reward": {
+        "amount": null,
+        "currency": "USD",
+        "status": "UNFUNDED"
+      }
+    }
+  ],
+  "labels": {
+    "bounty": "FBCA04",
+    "good first issue": "7057ff",
+    "help wanted": "008672",
+    "open-call": "F9D0C4",
+    "claim-in-progress": "FF6F00",
+    "integrations": "1D76DB",
+    "verification": "C2E0C6",
+    "security": "B60205",
+    "content": "0052CC",
+    "ci-tooling": "0E8A16"
+  },
+  "boardQuery": {
+    "bounty": "label:bounty",
+    "goodFirstIssue": "label:\"good first issue\"",
+    "openCall": "label:\"open-call\"",
+    "claimInProgress": "label:\"claim-in-progress\""
+  }
+}

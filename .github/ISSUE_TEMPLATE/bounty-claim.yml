@@ -1,0 +1,93 @@
+name: Bounty Claim
+description: Claim a bounty issue and outline your plan
+title: "[CLAIM] <issue title>"
+labels: ["bounty", "claim-in-progress"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for picking up this bounty! Please fill out the sections below so we can track your claim and set expectations.
+
+  - type: input
+    id: issue-number
+    attributes:
+      label: Related issue number
+      description: The bounty issue you're claiming (e.g., #31)
+      placeholder: "31"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: track
+    attributes:
+      label: Contribution track
+      description: Which bounty track does this belong to?
+      options:
+        - Integrations (wallet, DEX, Soroban adapters)
+        - Verification & DX (reviewer kit, `--verify` runners, docs, tutorials)
+        - Security & Correctness (fuzz/property tests, negative-case corpus, threat models)
+        - Ecosystem Content (deep-dives, demo videos, integration guides)
+        - CI/Tooling (reproducibility, supply-chain hardening, ergonomics)
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What will "done" look like? Be specific and testable.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Implementation plan
+      description: Brief outline of steps you'll take (1-5 bullet points)
+      placeholder: |
+        - Step 1
+        - Step 2
+        - ...
+    validations:
+      required: true
+
+  - type: input
+    id: estimated-days
+    attributes:
+      label: Estimated days to complete
+      description: Rough estimate (we use this for SLA tracking)
+      placeholder: "7"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      description: Confirm before submitting your PR
+      options:
+        - label: I have read CONTRIBUTING.md and the bounty program section
+          required: true
+        - label: My PR will include `Closes #<issue-number>` in the description
+          required: true
+        - All tests pass locally (`npm test` and relevant integration tests)
+        - No new boundary audit violations (run `npm run boundary:audit`)
+        - Conventional commit format (`feat:`, `fix:`, `docs:`, `test:`, `spec:`, `contract:`)
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Review SLA (target):**
+        - Initial response: ≤ 48 hours
+        - First review pass: ≤ 5 business days
+        - Merge after approval: ≤ 1 business day
+
+        **Bounty payment:**
+        - Paid only when scope, funding, and approval are explicit (see issue body)
+        - Merged work must pass CI/claims/release gates and keep `docs/state-snapshot.json` consistent

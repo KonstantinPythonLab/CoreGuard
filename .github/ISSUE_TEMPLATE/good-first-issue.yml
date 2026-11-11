@@ -1,0 +1,64 @@
+name: Good First Issue
+description: Propose or claim a newcomer-friendly task
+title: "[GOOD FIRST ISSUE] <title>"
+labels: ["good first issue", "help wanted"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Welcome! CoreGuard welcomes contributors at all levels. This template helps scope a task that's approachable for a first contribution.
+
+  - type: dropdown
+    id: task-type
+    attributes:
+      label: Task type
+      options:
+        - Documentation fix / clarification
+        - Test case for existing behavior
+        - Example / demo script improvement
+        - CI / workflow enhancement
+        - Small bug fix (link issue if known)
+        - Other (explain below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What needs to be done?
+      description: Clear, specific description of the work. Include file paths if known.
+      placeholder: |
+        Update CONTRIBUTING.md to clarify the conventional commit format for spec changes...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (how do we know it's done?)
+      placeholder: |
+        1. CONTRIBUTING.md mentions `spec:` for CGEP changes
+        2. Example commit shown
+        3. No boundary audit violations
+    validations:
+      required: true
+
+  - type: input
+    id: mentor
+    attributes:
+      label: Suggested mentor (GitHub username, optional)
+      description: Someone who can help if you get stuck
+      placeholder: "EslaM-X"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I can run `npm test` locally and it passes
+          required: true
+        - label: I understand the "determinism above all" ground rule
+          required: true
+        - label: My PR will follow conventional commits and include tests if applicable
+          required: true

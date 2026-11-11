@@ -102,12 +102,12 @@
   ],
   "engineering": {
     "testsTotal": 1511,
-    "filesScanned": 1116,
+    "filesScanned": 1121,
     "violations": 0,
     "docsNode": {
-      "executed": 130,
+      "executed": 132,
       "skipListed": 79,
-      "docsCovered": 28
+      "docsCovered": 29
     }
   }
 }
