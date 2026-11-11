@@ -8,7 +8,7 @@
       "issue": 26,
       "title": "Stellar DEX integration example",
       "track": "Integrations",
-      "status": "CLAIMED",
+      "status": "MERGED",
       "claimer": "granbellllc-png",
       "claimedAt": "2026-11-11",
       "acceptanceCriteria": [
@@ -23,7 +23,7 @@
         "Products registry entry with honest status"
       ],
       "pr": 51,
-      "mergedAt": null,
+      "mergedAt": "2026-11-11",
       "reward": {
         "amount": null,
         "currency": "USD",
