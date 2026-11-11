@@ -81,6 +81,8 @@ jobs:
       - run: forge build
       - name: EvidenceRegistryV2 (forge test)
         run: forge test --match-path "test/contract/*"
+      - name: Core 1116 invariants + fuzz (deterministic seed in foundry.toml)
+        run: forge test --match-path "test/contract/*invariant*" -vv
 
   demos:
     name: Demos

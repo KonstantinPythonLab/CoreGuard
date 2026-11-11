@@ -8,6 +8,18 @@ optimizer = true
 optimizer_runs = 200
 solc_version = "0.8.24"
 
+# Determinism over luck: fixed seeds mean a green fuzz/invariant run is
+# reproducible byte-for-byte on any machine and in CI.
+[fuzz]
+runs = 256
+seed = "0xc0ffee"
+
+[invariant]
+runs = 24
+depth = 24
+fail_on_revert = false
+seed = "0xc0ffee"
+
 [fmt]
 line_length = 100
 tab_width = 2
